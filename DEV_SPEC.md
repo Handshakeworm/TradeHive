@@ -227,6 +227,114 @@ config["data_vendors"] = {
 
 **已知限制**：yfinance `ticker.news` 只返回最近约 8 篇文章，不支持历史查询；历史回测日期较早时情绪数据可能为空，代码中已注释说明。Reddit 时间过滤已精确到日。
 
+---
+
+### 数据流全链路梳理（2026-03-29）
+
+#### 一、数据从采集到决策的完整路径
+
+```
+外部 API / 本地缓存
+    │
+    ▼
+dataflows/ 采集层（coingecko.py / fred_macro.py / sentiment_utils.py / y_finance.py 等）
+    │  返回格式化 CSV 字符串 + 写 Parquet 缓存
+    ▼
+interface.py route_to_vendor()  ← 统一路由入口，按 config["data_vendors"] 分配到对应 vendor
+    │
+    ▼
+agents/utils/ 工具层（@tool 函数包装，LangChain Tool 格式）
+    │  get_crypto_historical / get_news_sentiment / get_macro_snapshot 等
+    ▼
+agents/analysts/ 分析师节点（LangGraph 节点，调用 LLM + 工具）
+    │  每个 Analyst 将分析报告写入 AgentState 对应字段
+    │  market_analyst → state["market_report"]
+    │  news_analyst   → state["news_report"]
+    │  social_media_analyst / sentiment_analyst → state["sentiment_report"]
+    │  fundamentals_analyst → state["fundamentals_report"]
+    │  crypto_analyst → state["market_report"]
+    │  macro_analyst  → state["news_report"]
+    ▼
+Bull/Bear Researcher（读取上述报告字段，生成多空辩论）
+    │
+    ▼
+Research Manager（汇总辩论 → investment_plan）
+    │
+    ▼
+Trader（读取 investment_plan + 报告 → trader_investment_plan）
+    │
+    ▼
+Risk Debaters × 3（Aggressive / Conservative / Neutral，读取 trader_investment_plan）
+    │
+    ▼
+Portfolio Manager（读取风险辩论结果 → 最终决策 BUY/HOLD/SELL）
+    │
+    ▼
+SignalProcessor（提取单词决策标签）→ 输出
+```
+
+#### 二、各数据类型的具体用途
+
+| 数据类型 | 采集函数 | 消费的 Analyst | 写入字段 | 传递给下游 |
+|----------|---------|--------------|---------|-----------|
+| 股票日K OHLCV | `get_stock_data` | market_analyst | `market_report` | Bull/Bear/Trader/Risk |
+| 技术指标 | `get_indicators` | market_analyst | `market_report` | 同上 |
+| 财务报表 | `get_fundamentals/balance_sheet/cashflow/income_statement` | fundamentals_analyst | `fundamentals_report` | 同上 |
+| 新闻标题 | `get_news`, `get_global_news` | news_analyst | `news_report` | 同上 |
+| 社媒情绪（VADER评分） | `get_news_sentiment`, `get_reddit_sentiment` | sentiment_analyst / social_media_analyst | `sentiment_report` | 同上 |
+| 加密货币 OHLCV | `get_crypto_historical`, `get_crypto_price` | crypto_analyst | `market_report` | 同上 |
+| 宏观经济指标 | `get_macro_snapshot`, `get_macro_indicator` | macro_analyst | `news_report` | 同上 |
+| 历史决策记忆 | BM25 检索 `FinancialSituationMemory` | Bull/Bear Researcher | `investment_debate_state` | Research Manager |
+
+#### 三、数据层潜在问题清单
+
+**P1 — 高优先级（影响回测正确性）**
+
+1. **yfinance 新闻无历史查询能力**
+   - 现状：`ticker.news` 仅返回当前最近 ~8 篇，不支持按日期范围拉取历史新闻
+   - 影响：回测历史日期时（如 2024-05-10），新闻情绪数据可能为空或返回的是今天的新闻
+   - 后果：情绪分析在历史回测中基本失效，sentiment_report 字段为空，下游辩论缺少情绪输入
+   - 建议：接入支持历史查询的新闻 API（如 NewsAPI、GNews）或预缓存新闻数据
+
+2. **CoinGecko 免费 API 限速严重**
+   - 现状：公共端点无 API Key 时限速约 10-30 req/min，当 crypto analyst 连续调用多个工具时极易触发
+   - 影响：工具调用失败或需等待 60 秒，整个 Agent 推理链中断
+   - 建议：实现已规划的"降级到 yfinance BTC-USD"策略；或批量预缓存加密历史数据
+
+3. **FRED 数据发布存在滞后（Reporting Lag）**
+   - 现状：宏观指标（如 CPI）通常滞后 2-6 周发布，当前 `get_macro_snapshot` 未区分"发布日"与"数据日"
+   - 影响：回测中可能使用了当时尚未公开的数据（未来泄漏），在严格 Walk-forward 验证中违规
+   - 建议：FRED API 支持 `realtime_start` 参数，应在回测模式下传入 trade_date 限制只使用当时已发布的数据
+
+4. **social_media_analyst 与 sentiment_analyst 写入同一字段冲突**
+   - 现状：两个 Analyst 都写 `state["sentiment_report"]`，若同时选入 `selected_analysts`，后执行的会覆盖前者
+   - 影响：两个 Analyst 的结果无法并存，一份报告被静默丢弃
+   - 建议：为 social_media_analyst 单独分配 `state["community_report"]` 字段，并在下游 prompts 中增加该字段引用
+
+5. **crypto_analyst 与 market_analyst 写入同一字段冲突**
+   - 现状：两者都写 `state["market_report"]`，同时选中时后者覆盖前者
+   - 同上问题，建议 crypto_analyst 写入 `state["crypto_report"]`
+
+**P2 — 中优先级（影响数据完整性）**
+
+6. **Parquet 缓存无版本控制**
+   - 现状：缓存文件名为 `{start}_{end}.parquet`，若同一日期范围的数据被更新（如 yfinance 回填历史），旧缓存不会自动失效
+   - 建议：写缓存时附加数据源版本或写入时间戳，提供 `--force-refresh` 标志
+
+7. **加密货币 Ticker 映射表覆盖不全**
+   - 现状：`CRYPTO_ID_MAP` 仅预置 15 个主流币，其余 ticker 通过 `upper().lower()` 猜测 CoinGecko ID，高概率失败
+   - 建议：接入 CoinGecko `/coins/list` 动态构建映射，或给出明确错误提示
+
+8. **macro_analyst 与 news_analyst 写入同一字段**
+   - 同 P1-4/5 同类问题：macro_analyst 写 `state["news_report"]`，与 news_analyst 冲突
+   - 建议：macro_analyst 写入 `state["macro_report"]`
+
+**P3 — 低优先级（可接受的已知限制）**
+
+9. **Reddit 仅能查询近 1 个月内的帖子**（PRAW `time_filter` 最长为 `year`，但实际可用历史有限）
+10. **yfinance A股/港股数据存在缺口**（如停牌日、ST股退市等特殊情况未处理）
+11. **技术指标需足够历史数据预热**（如 200-SMA 需要至少 200 天数据，若传入窗口不足会产生 NaN）
+
 
 > **与 #3 的分工边界**：本任务只做数据接入与存储，不涉及向量化；宏观指标、情绪数据等同时被 #2（实时输入）和 #3（历史检索）使用，采集接口统一在此定义，#3 直接调用。
 
