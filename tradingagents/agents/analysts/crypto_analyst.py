@@ -89,7 +89,7 @@ def create_crypto_analyst(llm):
 
         return {
             "messages": [result],
-            "market_report": report,
+            "crypto_report": report,
         }
 
     return crypto_analyst_node

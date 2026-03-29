@@ -95,7 +95,13 @@ def get_macro_indicator(
     try:
         fred = _get_fred_client()
         series = fred.get_series(
-            resolved, observation_start=start_date, observation_end=end_date
+            resolved,
+            observation_start=start_date,
+            observation_end=end_date,
+            # realtime_start prevents using data not yet published on end_date
+            # (FRED publication lag can be days to weeks for macro series)
+            realtime_start=end_date,
+            realtime_end=end_date,
         )
         if series.empty:
             return f"No data found for FRED series '{resolved}' between {start_date} and {end_date}"
@@ -146,7 +152,13 @@ def get_macro_snapshot(
 
     for sid in key_series:
         try:
-            series = fred.get_series(sid, observation_start=start, observation_end=date)
+            series = fred.get_series(
+                sid,
+                observation_start=start,
+                observation_end=date,
+                realtime_start=date,
+                realtime_end=date,
+            )
             if series.empty:
                 results.append(f"  {sid:<12} {MACRO_SERIES.get(sid, sid):<45} N/A")
                 continue
