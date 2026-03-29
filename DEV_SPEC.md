@@ -294,26 +294,25 @@ SignalProcessor（提取单词决策标签）→ 输出
    - 现状：`ticker.news` 仅返回当前最近 ~8 篇，不支持按日期范围拉取历史新闻
    - 影响：回测历史日期时（如 2024-05-10），新闻情绪数据可能为空或返回的是今天的新闻
    - 后果：情绪分析在历史回测中基本失效，sentiment_report 字段为空，下游辩论缺少情绪输入
-   - 建议：接入支持历史查询的新闻 API（如 NewsAPI、GNews）或预缓存新闻数据
+   - 状态：⚠️ **待解决** — 代码已注释说明此限制；严格历史回测需接入 NewsAPI / GNews（有免费层，支持 30 天历史），超出当前任务范围
 
 2. **CoinGecko 免费 API 限速严重**
    - 现状：公共端点无 API Key 时限速约 10-30 req/min，当 crypto analyst 连续调用多个工具时极易触发
    - 影响：工具调用失败或需等待 60 秒，整个 Agent 推理链中断
-   - 建议：实现已规划的"降级到 yfinance BTC-USD"策略；或批量预缓存加密历史数据
+   - 状态：⚠️ **部分缓解** — `get_crypto_historical` 已优先走 yfinance（`BTC-USD`），CoinGecko 只用于实时快照；`_cg_get()` 已有 429 指数退避重试（等待 60s）。回测脚本建议跳过 `get_crypto_price` 实时快照工具调用，只用 `get_crypto_historical`
 
 3. **FRED 数据发布存在滞后（Reporting Lag）**
-   - 现状：宏观指标（如 CPI）通常滞后 2-6 周发布，当前 `get_macro_snapshot` 未区分"发布日"与"数据日"
+   - 原状：宏观指标（如 CPI）通常滞后 2-6 周发布，`get_macro_snapshot` 和 `get_macro_indicator` 未区分"发布日"与"数据日"
    - 影响：回测中可能使用了当时尚未公开的数据（未来泄漏），在严格 Walk-forward 验证中违规
-   - 建议：FRED API 支持 `realtime_start` 参数，应在回测模式下传入 trade_date 限制只使用当时已发布的数据
+   - 状态：✅ **已修复（2026-03-29）** — `fred_macro.py` 所有 `fred.get_series()` 调用均加入 `realtime_start=date, realtime_end=date` 参数，FRED API 自动只返回该日期前已公开发布的数据，消除未来泄漏
 
 4. **social_media_analyst 与 sentiment_analyst 写入同一字段冲突**
-   - 现状：两个 Analyst 都写 `state["sentiment_report"]`，若同时选入 `selected_analysts`，后执行的会覆盖前者
-   - 影响：两个 Analyst 的结果无法并存，一份报告被静默丢弃
-   - 建议：为 social_media_analyst 单独分配 `state["community_report"]` 字段，并在下游 prompts 中增加该字段引用
+   - 原状：两者都写 `state["sentiment_report"]`，同时选入时后执行的覆盖前者，一份报告被静默丢弃
+   - 状态：✅ **已修复（2026-03-29）** — `social_media_analyst` 改写 `state["community_report"]`（社区舆情脉冲）；`sentiment_analyst` 保持写 `state["sentiment_report"]`（VADER 定量评分）；`AgentState` 新增 `community_report` 字段；8 个下游节点（bull/bear researcher、research_manager、portfolio_manager、trader、3×风险辩手）均增加读取 `community_report` 并条件性拼入 `curr_situation`
 
 5. **crypto_analyst 与 market_analyst 写入同一字段冲突**
-   - 现状：两者都写 `state["market_report"]`，同时选中时后者覆盖前者
-   - 同上问题，建议 crypto_analyst 写入 `state["crypto_report"]`
+   - 原状：两者都写 `state["market_report"]`，同时选中时后者覆盖前者
+   - 状态：✅ **已修复（2026-03-29）** — `crypto_analyst` 改写 `state["crypto_report"]`；`AgentState` 新增 `crypto_report` 字段；所有下游节点同步更新，条件性读取并拼入 `curr_situation`
 
 **P2 — 中优先级（影响数据完整性）**
 
@@ -356,7 +355,7 @@ SignalProcessor（提取单词决策标签）→ 输出
 
 | 文件 | 写入字段 | 绑定工具 |
 |------|----------|----------|
-| `crypto_analyst.py` | `state["market_report"]` | `get_crypto_price`, `get_crypto_historical`, `get_crypto_market_overview`, `get_macro_snapshot` |
+| `crypto_analyst.py` | `state["crypto_report"]`（原为 `market_report`，已修复字段冲突） | `get_crypto_price`, `get_crypto_historical`, `get_crypto_market_overview`, `get_macro_snapshot` |
 | `sentiment_analyst.py` | `state["sentiment_report"]` | `get_news`, `get_news_sentiment`, `get_reddit_sentiment` |
 | `macro_analyst.py` | `state["news_report"]` | `get_macro_snapshot`, `get_macro_indicator`, `list_available_macro_series` |
 
