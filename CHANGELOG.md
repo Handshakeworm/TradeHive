@@ -1,156 +1,107 @@
-# TradeHive — 代码改动记录
+# TradeHive — 功能改动记录
 
 > **基线（Baseline）**：原始 [TradingAgents](https://github.com/Handshakeworm/TradeHive) 仓库，仅支持通过 yfinance / Alpha Vantage 获取美股数据，不支持加密货币、宏观指标或情绪分析。
 >
-> 本文件记录从基线出发的所有代码改动，以证明项目是在原始代码基础上进行结构性修改，而非简单复制。
+> 本文件记录从基线出发的所有功能模块新增与调整，以证明项目是在原始代码基础上进行结构性修改，而非简单复制。
 
 ---
 
 ## 版本：v0.3.0 — 数据源扩展 + 新 Analyst Agent 接入
 
 **改动日期**：2026-03-28  
-**改动范围**：21 个文件（10 个修改 + 11 个新增）  
-**改动摘要**：新增加密货币、宏观经济、情绪分析三类数据源及对应 Agent；修复 `main.py` 数据配置覆盖 Bug；补充 Parquet 本地缓存层
+**改动摘要**：新增加密货币、宏观经济、情绪分析三类数据源及对应 Analyst Agent；修复数据配置覆盖 Bug；新增 Parquet 本地缓存层
 
 ---
 
-## 一、新增文件（11 个）
+## 一、新增功能模块
 
-### 1.1 数据采集层（`tradingagents/dataflows/`）
+### 1.1 加密货币数据支持
 
-| 文件 | 功能 | 原始代码中无此功能原因 |
-|------|------|----------------------|
-| `coingecko.py` | CoinGecko API：实时加密货币价格快照、市场总览；yfinance 作为历史 OHLCV 主力（`BTC-USD` 格式） | 原始版本无加密货币支持，仅有股票接口 |
-| `fred_macro.py` | FRED API：16 个宏观系列（联邦基金利率 FEDFUNDS、CPI、失业率 UNRATE、VIX、10年期国债 GS10 等）；支持单指标查询和多指标快照 | 原始版本无宏观经济数据接口 |
-| `sentiment_utils.py` | VADER 情绪评分：对 yfinance 新闻标题+摘要打 compound 分（-1 至 +1），可选接入 Reddit PRAW；结果写入 Parquet 缓存 | 原始版本无情绪分析数据层 |
-| `local_cache.py` | Parquet 文件缓存：`save_dataframe()` / `load_dataframe()` / `get_cache_summary()`；路径结构 `data_cache/{category}/{symbol}/{start}_{end}.parquet`；供 RAP 向量库（Task 3）直接读取 | 原始版本无本地数据持久化机制 |
+**基线缺失**：原始版本只支持美股数据，无任何加密货币接口。
 
-### 1.2 Agent 工具层（`tradingagents/agents/utils/`）
+**新增内容**：
+- 接入 CoinGecko API，支持实时加密货币价格快照与市场总览
+- 历史 OHLCV 数据通过 yfinance（`BTC-USD` 格式）获取，保证完整历史覆盖
+- 新增 **Crypto Analyst Agent**，可自主调用加密货币数据工具，生成市场分析报告
 
-| 文件 | 包含 `@tool` 函数 | 说明 |
-|------|-------------------|------|
-| `crypto_tools.py` | `get_crypto_price`, `get_crypto_historical`, `get_crypto_market_overview` | LangChain tool 包装，内部调用 `route_to_vendor()` → `coingecko` 路由 |
-| `macro_tools.py` | `get_macro_indicator`, `get_macro_snapshot`, `list_available_macro_series` | 路由 → `fred` |
-| `sentiment_tools.py` | `get_news_sentiment`, `get_reddit_sentiment` | 路由 → `vader` |
+### 1.2 宏观经济数据支持
 
-### 1.3 Analyst Agent 层（`tradingagents/agents/analysts/`）
+**基线缺失**：原始版本无任何宏观经济数据接入。
 
-| 文件 | 写入 State 字段 | 绑定工具 | 加分依据 |
-|------|----------------|----------|----------|
-| `crypto_analyst.py` | `state["market_report"]` | `get_crypto_price/historical/overview`, `get_macro_snapshot` | 教授明确：**加密货币有加分** |
-| `sentiment_analyst.py` | `state["sentiment_report"]` | `get_news`, `get_news_sentiment`, `get_reddit_sentiment` | 新增 Agent 角色加分 |
-| `macro_analyst.py` | `state["news_report"]` | `get_macro_snapshot/indicator`, `list_available_macro_series` | 宏观事件预测 Agent 加分 |
+**新增内容**：
+- 接入 FRED（美联储经济数据库）API，覆盖联邦基金利率、CPI、失业率、VIX、10年期国债收益率等 16 个核心宏观系列
+- 支持单指标历史序列查询和多指标快照两种模式
+- 新增 **Macro Analyst Agent**，负责从宏观角度分析市场环境，辅助交易决策
 
----
+### 1.3 情绪分析支持
 
-## 二、修改的原有文件（10 个）
+**基线缺失**：原始版本无结构化情绪评分机制。
 
-### 2.1 `tradingagents/dataflows/interface.py`
+**新增内容**：
+- 集成 VADER 情绪分析模型，对 yfinance 抓取的新闻标题和摘要进行离线情绪评分（-1 至 +1）
+- 可选接入 Reddit PRAW，获取社交媒体情绪；若未配置则自动降级为新闻情绪
+- 新增 **Sentiment Analyst Agent**，输出结构化情绪报告供交易图使用
 
-**原始**：仅有 `yfinance` / `alpha_vantage` 两个 vendor，`TOOLS_CATEGORIES` 只含 4 类，`VENDOR_METHODS` 只有股票相关函数。
+### 1.4 本地数据缓存层
 
-**改动**（+72 行）：
-- 新增 3 个 import 块（`coingecko`, `fred_macro`, `sentiment_utils`）
-- `TOOLS_CATEGORIES` 新增 `crypto_data` / `macro_data` / `sentiment_data` 三个类别
-- `VENDOR_LIST` 新增 `"coingecko"`, `"fred"`, `"vader"`
-- `VENDOR_METHODS` 新增 8 个函数的 vendor 路由映射（替代硬编码调用）
+**基线缺失**：原始版本每次运行均重新调用 API，无任何数据持久化机制。
 
-### 2.2 `tradingagents/default_config.py`
-
-**原始**：`data_vendors` 只有 4 个 key（core_stock_apis / technical_indicators / fundamental_data / news_data）。
-
-**改动**（+9 行）：
-- `data_vendors` 新增 3 个 key：`crypto_data: "coingecko"`, `macro_data: "fred"`, `sentiment_data: "vader"`
-- 新增 `data_cache_enabled: True` 和 `data_cache_dir`（默认 `./data_cache`，可通过 `TRADEHIVE_CACHE_DIR` 环境变量覆盖）
-
-### 2.3 `tradingagents/agents/__init__.py`
-
-**原始**：只导出 4 个分析师 create 函数（market/social/news/fundamentals）。
-
-**改动**（+8 行）：
-- 新增 3 个 import：`create_sentiment_analyst`, `create_crypto_analyst`, `create_macro_analyst`
-- `__all__` 列表中增加对应 3 个名称
-
-### 2.4 `tradingagents/agents/utils/agent_utils.py`
-
-**原始**：只导入原有 4 类工具函数。
-
-**改动**（+15 行）：
-- 新增 3 个 import 块（9 个工具函数），使新工具在整个 Agent 工具空间中可见
-
-### 2.5 `tradingagents/graph/conditional_logic.py`
-
-**原始**：`ConditionalLogic` 类只有 4 个 `should_continue_*` 方法（market/social/news/fundamentals）。
-
-**改动**（+24 行，结构性扩展）：
-- 新增 `should_continue_sentiment()` → 返回 `"tools_sentiment"` 或 `"Msg Clear Sentiment"`
-- 新增 `should_continue_crypto()` → 返回 `"tools_crypto"` 或 `"Msg Clear Crypto"`
-- 新增 `should_continue_macro()` → 返回 `"tools_macro"` 或 `"Msg Clear Macro"`
-- 每个方法遵循与原有方法完全相同的模式，保持架构一致性
-
-### 2.6 `tradingagents/graph/setup.py`
-
-**原始**：`setup_graph()` 只处理 `"market"/"social"/"news"/"fundamentals"` 四种 analyst 类型。
-
-**改动**（+22 行）：
-- 新增 3 个 `if "xxx" in selected_analysts:` 分支，分别注册 sentiment / crypto / macro 的 analyst_node、delete_node、tool_node
-- 与原有 4 种 analyst 的注册逻辑完全对称，零架构改动，纯扩展
-
-### 2.7 `tradingagents/graph/trading_graph.py`
-
-**原始**：`TradingAgentsGraph` 只导入原有工具函数，`_create_tool_nodes()` 只创建 4 个 ToolNode。
-
-**改动**（+34 行）：
-- import 段新增 9 个工具函数名
-- `_create_tool_nodes()` 字典新增 `"sentiment"` / `"crypto"` / `"macro"` 三个 `ToolNode`，各自绑定对应工具列表
-
-### 2.8 `main.py`
-
-**原始**：`config["data_vendors"]` 赋值只含 4 个 key，直接覆盖了 `DEFAULT_CONFIG` 中新增的 crypto/macro/sentiment 配置（Bug）；`TradingAgentsGraph()` 调用没有显式传 `selected_analysts`。
-
-**改动**（保持功能，修复 Bug）：
-- `config["data_vendors"]` 补全全部 7 个 key，防止覆盖新增配置
-- `TradingAgentsGraph()` 显式传入 `selected_analysts=["market", "social", "news", "fundamentals"]`
-- 注释中新增加密货币和全量分析的使用示例（注释状态，不影响默认运行）
-- 添加数据采集策略说明注释
-
-### 2.9 `pyproject.toml`
-
-**原始**：依赖列表无数据源新增包。
-
-**改动**（+4 行）：
-```
-fredapi>=0.5.1        # FRED 宏观经济数据
-vaderSentiment>=3.3.2 # VADER 情绪分析（纯离线）
-pyarrow>=14.0.0       # Parquet 本地缓存
-praw>=7.7.0           # Reddit API（可选）
-```
-
-### 2.10 `.env.example`
-
-**原始**：只有 LLM Provider 的 API Key 占位符。
-
-**改动**（+19 行）：新增数据源 API Key 说明和申请链接：
-- `ALPHA_VANTAGE_API_KEY`（股票）
-- `FRED_API_KEY`（宏观，必填才能用 macro analyst）
-- `REDDIT_CLIENT_ID/SECRET/USER_AGENT`（可选，不填自动降级为新闻情绪）
-- `TRADEHIVE_CACHE_DIR`（缓存目录，可选）
+**新增内容**：
+- 新增基于 Parquet 格式的文件缓存模块，数据首次获取后写入本地，后续直接读取缓存
+- 统一缓存路径结构：`data_cache/{category}/{symbol}/{start}_{end}.parquet`
+- 缓存数据可直接供 RAP 向量库（Task 3）复用，无需重复采集
 
 ---
 
-## 三、核心设计决策记录
+## 二、调整的原有功能模块
 
-### 为什么不直接修改原有 Analyst，而是新增？
+### 2.1 数据路由层扩展
 
-原有 market/social/news/fundamentals 四个 analyst 使用独立 `selected_analysts` 参数控制是否启用，采用相同的 LangGraph 节点注册模式。新增 analyst 遵循相同模式，**零侵入原有节点逻辑**，不破坏原有 API。
+**调整前**：数据路由仅支持 `yfinance` 和 `alpha_vantage` 两个数据源，只有股票相关类别。
+
+**调整后**：新增 `coingecko`、`fred`、`vader` 三个数据源及对应路由类别（`crypto_data` / `macro_data` / `sentiment_data`），新工具函数通过统一路由机制调用，与原有机制完全兼容。
+
+### 2.2 默认配置扩展
+
+**调整前**：`data_vendors` 配置只涵盖股票相关数据源，无缓存配置项。
+
+**调整后**：配置新增加密货币、宏观、情绪三类数据源的默认 vendor 指定，以及本地缓存开关和缓存目录配置（支持通过环境变量覆盖）。
+
+### 2.3 Agent 图扩展
+
+**调整前**：LangGraph 交易图只支持注册 market / social / news / fundamentals 四种 Analyst 节点。
+
+**调整后**：图注册逻辑新增对 sentiment / crypto / macro 三类 Analyst 的支持，与原有四种 Analyst 完全对称，通过 `selected_analysts` 参数按需启用，不影响原有默认流程。
+
+### 2.4 入口配置修复
+
+**调整前**：`main.py` 中对 `data_vendors` 的赋值会覆盖配置中新增的数据源字段，导致新功能失效（Bug）。
+
+**调整后**：修复覆盖问题，确保所有数据源配置完整保留；新增加密货币分析和全量 Analyst 的示例用法（注释形式，不影响默认运行）。
+
+### 2.5 依赖与环境配置
+
+**调整前**：项目依赖中不包含新数据源所需包；`.env.example` 只有 LLM 的 API Key 占位符。
+
+**调整后**：
+- 新增四个依赖包：`fredapi`（宏观数据）、`vaderSentiment`（情绪分析）、`pyarrow`（Parquet 缓存）、`praw`（Reddit，可选）
+- `.env.example` 补充 FRED、Reddit 等数据源的 API Key 说明及申请链接，方便团队成员配置
+
+---
+
+## 三、设计决策说明
+
+### 为什么新增 Analyst Agent 而不修改原有 Agent？
+
+原有四个 Analyst 已有稳定的调用接口和节点注册逻辑。新增独立 Agent 可按需启用，不破坏已有流程，符合开闭原则。
 
 ### 为什么加密货币历史数据用 yfinance 而非仅 CoinGecko？
 
-CoinGecko 免费 tier 的 `/market_chart/range` 端点需要认证，且 `/market_chart?days=N` 只能查最近 N 天。yfinance 的 `BTC-USD` 代码支持完整历史，CoinGecko 保留用于实时快照（无需 API Key 的实时端点免费可用）。
+CoinGecko 免费接口获取完整历史数据有限制，yfinance 的 `BTC-USD` 格式支持任意时间段历史数据，稳定性更好。CoinGecko 保留用于实时快照场景。
 
-### 为什么用 Parquet 而非数据库？
+### 为什么用 Parquet 文件缓存而非数据库？
 
-项目以研究为主，Parquet 满足：① pandas 原生读写；② 列式存储节省空间；③ `#3 RAP 向量库` 直接 `pd.read_parquet()` 无需额外接口；④ 零依赖（pyarrow 已是必选依赖）。无需维护数据库连接和 schema 迁移。
+项目以研究为主，Parquet 格式轻量、零服务依赖，pandas 原生读写，且可直接供 RAP 向量库使用，无需额外接口转换。
 
 ---
 
@@ -164,7 +115,7 @@ pip install fredapi vaderSentiment pyarrow praw yfinance
 # 2. 配置 API Keys
 cp .env.example .env
 # 填写 OPENAI_API_KEY（或 OPENROUTER_API_KEY）
-# 可选：FRED_API_KEY（使用 macro analyst 时需要）
+# 可选：FRED_API_KEY（使用宏观分析师时需要）
 
 # 3. 运行 demo（NVDA 2024-05-10）
 python main.py
@@ -172,11 +123,11 @@ python main.py
 
 ---
 
-## 历史 Commit 记录（原始仓库）
+## 五、历史 Commit 记录
 
 | Commit | 说明 |
 |--------|------|
-| `3f817c4` | Update .env.example（本次之前最后一次提交） |
+| `ac43f63` | Update .env.example（本次之前最后一次提交） |
 | `d6505f4` | DEV_SPEC 改进，项目排期表建立 |
 | `8b4272a` | 完善 baseline/single agent/multi agent 设计 |
 | `57e23d2` | Initial commit（原始 TradingAgents 基线） |
