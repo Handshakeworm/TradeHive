@@ -86,6 +86,12 @@ def get_news_sentiment(
     except Exception as e:
         return f"Error fetching news for {ticker}: {e}"
 
+    # ⚠️ yfinance news API limitation:
+    # ticker.news returns only the ~8 most recent articles regardless of date range.
+    # Time filtering below is applied strictly to exclude any article outside the window,
+    # but for historical backtesting (date far in the past) results may be sparse or empty.
+    # For richer historical sentiment, consider integrating a news archive API.
+
     if not news_items:
         return f"No news found for {ticker} around {date}."
 
@@ -208,16 +214,25 @@ def get_reddit_sentiment(
     )
 
     scored = []
+    ref_dt = datetime.strptime(date, "%Y-%m-%d")
+    # 计算回溯天数窗口（默认抓近7天；time_filter 只是 Reddit 搜索参数，
+    # 实际时间过滤在下方通过 post.created_utc 精确筛选）
+    cutoff_start = ref_dt - timedelta(days=7)
+
     for sub_name in [s.strip() for s in subreddits.split(",")]:
         try:
             subreddit = reddit.subreddit(sub_name)
-            for post in subreddit.search(ticker, limit=limit, time_filter="week"):
+            for post in subreddit.search(ticker, limit=limit, time_filter="month"):
+                post_dt = datetime.utcfromtimestamp(post.created_utc)
+                # 严格按时间窗口过滤：只保留 [cutoff_start, ref_dt] 范围内的帖子
+                if not (cutoff_start <= post_dt <= ref_dt + timedelta(days=1)):
+                    continue
                 text = f"{post.title}. {post.selftext[:200]}".strip()
                 scores = sia.polarity_scores(text)
                 compound = round(scores["compound"], 4)
                 scored.append({
                     "subreddit": sub_name,
-                    "date": datetime.utcfromtimestamp(post.created_utc).strftime("%Y-%m-%d"),
+                    "date": post_dt.strftime("%Y-%m-%d"),
                     "title": post.title[:90],
                     "score": post.score,
                     "sentiment": _label_sentiment(compound),
