@@ -97,26 +97,6 @@ RAP 的核心是”按需检索”而非把所有数据塞进 prompt——当 ag
 
 ### 1. Agent 角色设计修改
 
-#### 1.1 **技术分析师 Agent**（`technical_analyst.py`）
-
-- 只关注技术面分析（均线、MACD、RSI、布林带等），不考虑基本面或新闻
-- 优先调用 `get_stock_data` 和 `get_indicators` 工具获取历史价格与技术指标
-- 输出趋势判断与买卖建议，并给出简明理由
-- 相比 baseline：在分析流程最前面新增技术面独立分析段落，后续其他 agent 内容不变
-- 分析输出结果存储至独立文件夹
-
-#### 1.2 **情绪分析 Agent**（Sentiment Agent）
-
-- 在 `TradingAgentsGraph` 的 `selected_analysts` 列表中新增 `”sentiment”` 节点
-- 独立调用 LLM，对目标股票的新闻与社交数据进行情绪分析，输出正面 / 中性 / 负面情绪分数及解释
-- 实现方式与 technical、market 等 analyst 一致，作为独立节点插入分析流程
-- 相比 baseline：额外输出一段”情绪面分析”结果，便于对比各 agent 的贡献
-
-#### 1.3 **风险管理 Agent**（Risk Manager）
-
-- 文件已存在：`tradingagents/agents/managers/risk_manager.py`（含 `create_risk_manager` 函数）
-- 当前状态：尚未集成进 `main.py`，待接入运行流程
-
 
 #### 1.4 是否新增会议主持者角色
 
