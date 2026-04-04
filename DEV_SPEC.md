@@ -368,14 +368,23 @@ tools修改以支持回测
 
 | 工具 | API 限制 | 回测方案 |
 |------|----------|----------|
-| `get_news` (yfinance vendor) | API 只返回最新 20 条，无历史查询接口 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage（支持 `time_from/time_to`） |
-| `get_news_sentiment` | 与 `get_news` 拉同一批 yfinance 新闻，功能重复 | ✅ 已删除，Alpha Vantage NEWS_SENTIMENT API 自带情绪评分，无需单独 VADER |
-| `get_global_news` (yfinance vendor) | `yf.Search()` 只搜当前新闻 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage |
+
 | `get_reddit_sentiment` | Reddit API 只搜最近一个月帖子 | 实盘可用，回测不可用，无替代 |
 | `get_crypto_market_overview` | CoinGecko API 只返回当前排行，不接受日期参数 | 实盘可用，回测无替代 |
+
 | `get_fundamentals` (yfinance vendor) | `ticker.info` 只返回当前基本面，无历史接口 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage（注：AV OVERVIEW 端点同样为当前快照） |
-| `get_insider_transactions` (yfinance vendor) | 只返回最新交易记录，无历史查询 | 保留 yfinance（有完整历史交易记录）+ Alpha Vantage 双 vendor |
+
+
+| `get_insider_transactions` (yfinance vendor) | ~~只返回最新交易记录，无历史查询~~ 实测有完整历史交易记录 | 保留Alpha Vantage|
 | `get_balance_sheet/cashflow/income_statement` (yfinance) | 返回多期财报但无日期过滤，回测有数据泄漏风险 | 需加按日期截断逻辑 |
+
+**Alpha Vantage 的 NEWS_SENTIMENT 返回结构也类似，每条包含：**
+
+title
+summary（摘要，非全文）
+source
+overall_sentiment_score / overall_sentiment_label
+ticker_sentiment（每个 ticker 的情绪分）
 
 
 sentiment analyst功能改进

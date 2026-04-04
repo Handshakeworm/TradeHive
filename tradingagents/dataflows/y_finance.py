@@ -441,24 +441,38 @@ def get_income_statement(
 
 
 def get_insider_transactions(
-    ticker: Annotated[str, "ticker symbol of the company"]
+    ticker: Annotated[str, "ticker symbol of the company"],
+    curr_date: Annotated[str, "current trading date in yyyy-mm-dd format"] = None,
+    limit: int = 20,
 ):
     """Get insider transactions data from yfinance."""
     try:
         ticker_obj = yf.Ticker(ticker.upper())
         data = yf_retry(lambda: ticker_obj.insider_transactions)
-        
+
         if data is None or data.empty:
             return f"No insider transactions data found for symbol '{ticker}'"
-            
+
+        # Filter out future data for backtesting
+        if curr_date and 'Start Date' in data.columns:
+            cutoff = pd.to_datetime(curr_date)
+            data = data[pd.to_datetime(data['Start Date']) <= cutoff]
+
+        # Keep only the most recent transactions
+        if limit and not data.empty:
+            data = data.head(limit)
+
+        if data.empty:
+            return f"No insider transactions found for {ticker} on or before {curr_date}"
+
         # Convert to CSV string for consistency with other functions
         csv_string = data.to_csv()
-        
+
         # Add header information
         header = f"# Insider Transactions data for {ticker.upper()}\n"
         header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        
+
         return header + csv_string
-        
+
     except Exception as e:
         return f"Error retrieving insider transactions for {ticker}: {str(e)}"

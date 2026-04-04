@@ -277,9 +277,13 @@ python main.py
 |------|------|
 | `tradingagents/dataflows/interface.py` | 移除 `get_fundamentals as get_yfinance_fundamentals` import；移除 `VENDOR_METHODS["get_fundamentals"]` 中的 yfinance 条目 |
 
-### 三、保留 `get_insider_transactions` 双 vendor
+### 三、`get_insider_transactions` 只保留 yfinance vendor
 
-**保留原因**：yfinance `ticker.insider_transactions` 返回完整历史交易记录（含日期），可用于回测，保留作为 fallback。
+**原因**：两边数据源头都是 SEC 公开披露（Form 4），质量无差异；yfinance 免费无配额限制，Alpha Vantage 消耗 API 配额。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/interface.py` | 移除 `get_alpha_vantage_insider_transactions` import 及 `VENDOR_METHODS` 中的 alpha_vantage 条目 |
 
 ### 四、删除 `get_news_sentiment` 工具
 
@@ -292,20 +296,71 @@ python main.py
 | `tradingagents/agents/utils/sentiment_tools.py` | 删除 `get_news_sentiment` @tool 包装函数 |
 | `tradingagents/agents/utils/agent_utils.py` | 移除 `get_news_sentiment` import |
 
-### 五、变更后 vendor 映射
+### 五、`get_news` 新增 `limit` 和 `sort` 参数
+
+**原因**：Alpha Vantage NEWS_SENTIMENT API 默认可返回 200+ 条新闻，全部灌给 LLM 浪费 token。新增 `limit=30`（默认）和 `sort=RELEVANCE`（按 ticker 相关性排序），控制输入量同时保证最相关的新闻优先返回。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/alpha_vantage_news.py` | `get_news()` 新增 `limit` 参数（默认 30），API 请求加 `limit` 和 `sort=RELEVANCE` |
+
+### 六、变更后 vendor 映射
 
 | 工具 | 可用 vendor |
 |------|------------|
 | `get_news` | `alpha_vantage` |
 | `get_global_news` | `alpha_vantage` |
 | `get_fundamentals` | `alpha_vantage` |
-| `get_insider_transactions` | `alpha_vantage`, `yfinance` |
+| `get_insider_transactions` | `yfinance` |
 
-### 六、未受影响
+### 七、未受影响
 
 - `sentiment_utils.py` 中 VADER 核心函数（`score_text_sentiment`、`_label_sentiment`、`_get_vader`）和 `get_reddit_sentiment` 保留
 - `sentiment_tools.py` 中 `get_reddit_sentiment` @tool 保留
 - `y_finance.py` 中 `get_fundamentals` 函数本体保留（仅不再注册为 vendor）
+
+---
+
+## 版本：v0.5.1 — 数据层日期截断防泄漏 + 财报 vendor 精简
+
+**改动日期**：2026-04-04  
+**改动摘要**：回测场景下数据工具可能返回"未来"数据，造成数据泄漏。在数据层加日期截断逻辑；财报删除 yfinance vendor 只保留 Alpha Vantage（有 `reportedDate` 可严格按披露日过滤）
+
+---
+
+### 一、删除 yfinance 财报 vendor
+
+**删除原因**：yfinance 财报只有 `fiscalDateEnding`（会计期结束日），无法区分报表是否已实际披露。Alpha Vantage 有 `reportedDate`（实际披露日），可严格按披露日过滤防止数据泄漏。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/interface.py` | 移除 `get_yfinance_balance_sheet`、`get_yfinance_cashflow`、`get_yfinance_income_statement` 的 import 及 `VENDOR_METHODS` 中的 yfinance 条目 |
+
+### 二、Alpha Vantage 财报加 `reportedDate` 过滤
+
+**改动原因**：`get_balance_sheet`、`get_cashflow`、`get_income_statement` 已有 `curr_date` 参数但未使用。现在启用该参数，按 `reportedDate <= curr_date` 过滤，只返回在回测日期之前已公开披露的财报。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/alpha_vantage_fundamentals.py` | 新增 `_filter_by_reported_date()` 工具函数；三个财报函数在返回前调用过滤 |
+
+### 三、`get_insider_transactions` 加日期截断 + limit
+
+**改动原因**：yfinance 返回全部历史内幕交易记录，可能包含回测日期之后的数据；且数据量可能很大浪费 token。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/y_finance.py` | `get_insider_transactions` 新增 `curr_date` 参数（按 `Start Date` 过滤）和 `limit=20`（只返回最近 20 条） |
+| `tradingagents/agents/utils/news_data_tools.py` | tool 层 `get_insider_transactions` 新增 `curr_date` 参数并透传 |
+
+### 四、变更后 vendor 映射
+
+| 工具 | 可用 vendor |
+|------|------------|
+| `get_balance_sheet` | `alpha_vantage` |
+| `get_cashflow` | `alpha_vantage` |
+| `get_income_statement` | `alpha_vantage` |
+| `get_insider_transactions` | `yfinance` |
 
 ---
 
