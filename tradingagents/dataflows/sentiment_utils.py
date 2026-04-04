@@ -1,18 +1,16 @@
 """
-社交媒体情绪分析模块（零额外 API 依赖）
-策略：在现有 yfinance 新闻数据上叠加 VADER 情绪评分，无需新增任何 API Key。
+情绪���析模块
 - VADER（Valence Aware Dictionary and sEntiment Reasoner）：
   专为金融/社交媒体短文本优化的规则+词典情绪分析器，完全离线运行。
-- 同时支持 Reddit（可选，需要 Reddit API Key）作为额外社交数据源。
+- Reddit（可选，需要 Reddit API Key）作为社交数据源。
+- 新闻情绪已由 Alpha Vantage NEWS_SENTIMENT API 自带，不再需要本地 VADER 评分。
 
 依赖：pip install vaderSentiment praw（praw 为可选，仅需 Reddit 时安装）
-分工说明：本模块只做数据采集与情绪评分，不做向量化（向量化归 #3）
 """
 
 from typing import Annotated
 from datetime import datetime, timedelta
 import os
-import json
 import pandas as pd
 
 
@@ -59,117 +57,6 @@ def _label_sentiment(compound: float) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # 工具函数（供 interface.py 注册为 Agent 可调用工具）
 # ─────────────────────────────────────────────────────────────────────────────
-
-def get_news_sentiment(
-    ticker: Annotated[str, "Stock or crypto ticker symbol, e.g. NVDA, BTC"],
-    date: Annotated[str, "Reference date in yyyy-mm-dd format"],
-    lookback_days: Annotated[int, "Days of news lookback window"] = 7,
-) -> str:
-    """
-    获取新闻情绪分析报告：从 yfinance 拉取新闻标题后用 VADER 进行情绪评分。
-    兼容实时（当日）和历史回测（任意日期）两种场景。
-    返回格式化字符串，供情绪分析 Agent 直接消费。
-    """
-    try:
-        import yfinance as yf
-    except ImportError:
-        return "yfinance 未安装，请运行: pip install yfinance"
-
-    try:
-        sia = _get_vader()
-    except ImportError as e:
-        return str(e)
-
-    try:
-        ticker_obj = yf.Ticker(ticker.upper())
-        news_items = ticker_obj.news or []
-    except Exception as e:
-        return f"Error fetching news for {ticker}: {e}"
-
-    # ⚠️ yfinance news API limitation:
-    # ticker.news returns only the ~8 most recent articles regardless of date range.
-    # Time filtering below is applied strictly to exclude any article outside the window,
-    # but for historical backtesting (date far in the past) results may be sparse or empty.
-    # For richer historical sentiment, consider integrating a news archive API.
-
-    if not news_items:
-        return f"No news found for {ticker} around {date}."
-
-    ref_dt = datetime.strptime(date, "%Y-%m-%d")
-    cutoff_start = ref_dt - timedelta(days=lookback_days)
-
-    scored = []
-    for item in news_items:
-        pub_ts = item.get("providerPublishTime") or item.get("pubDate")
-        title = item.get("title", "")
-        summary = item.get("summary", "") or item.get("description", "")
-        link = item.get("link", "")
-
-        # 解析发布时间
-        if isinstance(pub_ts, int):
-            pub_dt = datetime.utcfromtimestamp(pub_ts)
-        elif isinstance(pub_ts, str):
-            try:
-                pub_dt = datetime.fromisoformat(pub_ts.replace("Z", "+00:00")).replace(tzinfo=None)
-            except Exception:
-                pub_dt = ref_dt
-        else:
-            pub_dt = ref_dt
-
-        # 过滤时间窗口
-        if not (cutoff_start <= pub_dt <= ref_dt + timedelta(days=1)):
-            continue
-
-        # VADER 评分：标题 + 摘要拼接
-        full_text = f"{title}. {summary}".strip()
-        scores = sia.polarity_scores(full_text)
-        compound = round(scores["compound"], 4)
-        label = _label_sentiment(compound)
-
-        scored.append({
-            "date": pub_dt.strftime("%Y-%m-%d"),
-            "title": title[:100],
-            "sentiment": label,
-            "compound": compound,
-            "positive": round(scores["pos"], 4),
-            "negative": round(scores["neg"], 4),
-        })
-
-    if not scored:
-        return (
-            f"No news found for {ticker} in the window "
-            f"[{cutoff_start.strftime('%Y-%m-%d')} ~ {date}]."
-        )
-
-    df = pd.DataFrame(scored).sort_values("date", ascending=False)
-
-    # 聚合统计
-    avg_compound = df["compound"].mean()
-    overall_label = _label_sentiment(avg_compound)
-    pos_count = (df["sentiment"] == "POSITIVE").sum()
-    neg_count = (df["sentiment"] == "NEGATIVE").sum()
-    neu_count = (df["sentiment"] == "NEUTRAL").sum()
-
-    lines = [
-        f"# News Sentiment Report: {ticker.upper()}",
-        f"# Reference date: {date} | Lookback: {lookback_days} days",
-        f"# Source: yfinance news + VADER sentiment scoring\n",
-        f"Overall Sentiment:   {overall_label} (avg compound score: {avg_compound:.4f})",
-        f"Articles analyzed:   {len(df)}  "
-        f"[POSITIVE: {pos_count}  NEUTRAL: {neu_count}  NEGATIVE: {neg_count}]\n",
-        f"{'Date':<12} {'Sentiment':<10} {'Score':>7}  Title",
-        "-" * 80,
-    ]
-    for _, row in df.iterrows():
-        lines.append(
-            f"{row['date']:<12} {row['sentiment']:<10} {row['compound']:>7.4f}  {row['title']}"
-        )
-
-    # 写缓存（#3 向量库用）
-    _save_sentiment_cache(df, ticker, date)
-
-    return "\n".join(lines)
-
 
 def get_reddit_sentiment(
     ticker: Annotated[str, "Stock or crypto ticker symbol"],
@@ -265,14 +152,3 @@ def get_reddit_sentiment(
     return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 内部工具：情绪数据缓存（供 #3 RAP 向量库读取）
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _save_sentiment_cache(df: pd.DataFrame, ticker: str, date: str):
-    """将情绪评分数据写入本地缓存，#3 可直接读取，无需重复采集。"""
-    try:
-        from .local_cache import save_dataframe
-        save_dataframe(df, ticker, "sentiment", date, date)
-    except Exception:
-        pass

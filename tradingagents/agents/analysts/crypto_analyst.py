@@ -1,7 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from tradingagents.agents.utils.agent_utils import build_instrument_context
 from tradingagents.agents.utils.crypto_tools import (
-    get_crypto_price,
     get_crypto_historical,
     get_crypto_market_overview,
 )
@@ -13,7 +12,6 @@ def create_crypto_analyst(llm):
     Crypto Market Analyst Agent.
 
     Focused on cryptocurrency market analysis:
-    - Real-time price snapshot (CoinGecko, no API key)
     - Historical OHLCV for trend analysis
     - Crypto market overview (top 10 by market cap)
     - Macro snapshot for rate/VIX context alongside crypto
@@ -28,7 +26,6 @@ def create_crypto_analyst(llm):
         instrument_context = build_instrument_context(state["company_of_interest"])
 
         tools = [
-            get_crypto_price,
             get_crypto_historical,
             get_crypto_market_overview,
             get_macro_snapshot,
@@ -39,8 +36,6 @@ def create_crypto_analyst(llm):
             "metrics, crypto market structure, and macro-crypto correlations. "
             "Your objective is to produce a comprehensive crypto market analysis report.\n\n"
             "Use the following tools:\n"
-            "- get_crypto_price(): Real-time price snapshot with market cap, volume, "
-            "and short-term price change percentages\n"
             "- get_crypto_historical(): Historical daily OHLCV data for trend and "
             "momentum analysis (suggest at least 90 days lookback)\n"
             "- get_crypto_market_overview(): Top 10 coins by market cap; assess overall "

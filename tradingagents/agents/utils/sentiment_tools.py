@@ -4,29 +4,6 @@ from tradingagents.dataflows.interface import route_to_vendor
 
 
 @tool
-def get_news_sentiment(
-    ticker: Annotated[str, "Stock or crypto ticker symbol, e.g. NVDA, BTC"],
-    date: Annotated[str, "Reference date in yyyy-mm-dd format"],
-    lookback_days: Annotated[int, "Days of news to analyze"] = 7,
-) -> str:
-    """
-    Perform quantitative sentiment analysis on recent news for a ticker.
-    Uses yfinance to fetch news headlines, then scores each article with
-    VADER (Valence Aware Dictionary and sEntiment Reasoner), a rule-based
-    NLP model optimized for financial short text. No API key required.
-    Returns per-article sentiment labels (POSITIVE/NEUTRAL/NEGATIVE),
-    compound scores (-1 to +1), and an aggregate summary.
-    Args:
-        ticker: Stock or crypto ticker symbol
-        date: Reference / analysis date
-        lookback_days: How many days of news to include (default 7)
-    Returns:
-        Formatted sentiment report with per-article scores and aggregate stats
-    """
-    return route_to_vendor("get_news_sentiment", ticker, date, lookback_days)
-
-
-@tool
 def get_reddit_sentiment(
     ticker: Annotated[str, "Stock or crypto ticker symbol"],
     date: Annotated[str, "Reference date in yyyy-mm-dd format"],

@@ -20,7 +20,6 @@ from tradingagents.agents.utils.news_data_tools import (
 )
 # ── 新增数据源工具 ──────────────────────────────────────────────────────────
 from tradingagents.agents.utils.crypto_tools import (
-    get_crypto_price,
     get_crypto_historical,
     get_crypto_market_overview,
 )
@@ -30,7 +29,6 @@ from tradingagents.agents.utils.macro_tools import (
     list_available_macro_series,
 )
 from tradingagents.agents.utils.sentiment_tools import (
-    get_news_sentiment,
     get_reddit_sentiment,
 )
 

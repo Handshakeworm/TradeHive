@@ -4,13 +4,11 @@ from typing import Annotated
 from .y_finance import (
     get_YFin_data_online,
     get_stock_stats_indicators_window,
-    get_fundamentals as get_yfinance_fundamentals,
     get_balance_sheet as get_yfinance_balance_sheet,
     get_cashflow as get_yfinance_cashflow,
     get_income_statement as get_yfinance_income_statement,
     get_insider_transactions as get_yfinance_insider_transactions,
 )
-from .yfinance_news import get_news_yfinance, get_global_news_yfinance
 from .alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
     get_indicator as get_alpha_vantage_indicator,
@@ -26,7 +24,6 @@ from .alpha_vantage_common import AlphaVantageRateLimitError
 
 # ── 新增数据源 ──────────────────────────────────────────────────────────────
 from .coingecko import (
-    get_crypto_price,
     get_crypto_historical,
     get_crypto_market_overview,
 )
@@ -36,7 +33,6 @@ from .fred_macro import (
     list_available_macro_series,
 )
 from .sentiment_utils import (
-    get_news_sentiment,
     get_reddit_sentiment,
 )
 
@@ -78,7 +74,6 @@ TOOLS_CATEGORIES = {
     "crypto_data": {
         "description": "Cryptocurrency market data (real-time & historical)",
         "tools": [
-            "get_crypto_price",
             "get_crypto_historical",
             "get_crypto_market_overview",
         ]
@@ -92,9 +87,8 @@ TOOLS_CATEGORIES = {
         ]
     },
     "sentiment_data": {
-        "description": "News & social media sentiment scoring (VADER)",
+        "description": "Social media sentiment scoring (VADER)",
         "tools": [
-            "get_news_sentiment",
             "get_reddit_sentiment",
         ]
     },
@@ -123,7 +117,6 @@ VENDOR_METHODS = {
     # fundamental_data
     "get_fundamentals": {
         "alpha_vantage": get_alpha_vantage_fundamentals,
-        "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
         "alpha_vantage": get_alpha_vantage_balance_sheet,
@@ -140,10 +133,8 @@ VENDOR_METHODS = {
     # news_data
     "get_news": {
         "alpha_vantage": get_alpha_vantage_news,
-        "yfinance": get_news_yfinance,
     },
     "get_global_news": {
-        "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
     },
     "get_insider_transactions": {
@@ -151,9 +142,6 @@ VENDOR_METHODS = {
         "yfinance": get_yfinance_insider_transactions,
     },
     # ── 新增：加密货币（coingecko） ──────────────────────────────────────────
-    "get_crypto_price": {
-        "coingecko": get_crypto_price,
-    },
     "get_crypto_historical": {
         "coingecko": get_crypto_historical,
     },
@@ -171,9 +159,6 @@ VENDOR_METHODS = {
         "fred": list_available_macro_series,
     },
     # ── 新增：情绪分析（vader） ─────────────────────────────────────────────
-    "get_news_sentiment": {
-        "vader": get_news_sentiment,
-    },
     "get_reddit_sentiment": {
         "vader": get_reddit_sentiment,
     },

@@ -231,15 +231,81 @@ python main.py
 - **`propagation.py` 无需修改**：`sentiment_report` 已在初始状态中初始化为空字符串
 
 
-## 五、历史 Commit 记录
+---
 
-| Commit | 说明 |
-|--------|------|
-| `ac43f63` | Update .env.example（本次之前最后一次提交） |
-| `d6505f4` | DEV_SPEC 改进，项目排期表建立 |
-| `8b4272a` | 完善 baseline/single agent/multi agent 设计 |
-| `57e23d2` | Initial commit（原始 TradingAgents 基线） |
+## 版本：v0.4.2 — 删除 `get_crypto_price` 工具
 
+**改动日期**：2026-04-04  
+**改动摘要**：删除 `get_crypto_price` 工具，该工具调用 CoinGecko API 只返回实时快照，不接受日期参数，无法支持回测场景。使用 `get_crypto_historical` 替代，它通过 yfinance 支持任意历史日期范围。
 
+---
 
+### 涉及文件
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/coingecko.py` | 删除 `get_crypto_price()` 函数定义 |
+| `tradingagents/agents/utils/crypto_tools.py` | 删除 `get_crypto_price` tool wrapper |
+| `tradingagents/agents/analysts/crypto_analyst.py` | 移除 import、tools 列表引用、prompt 中的工具说明、docstring |
+| `tradingagents/agents/utils/agent_utils.py` | 移除 import |
+| `tradingagents/dataflows/interface.py` | 移除 import、`TOOLS_CATEGORIES` 条目、`VENDOR_METHODS` 条目 |
+| `tradingagents/graph/trading_graph.py` | 移除 import 及 ToolNode 中的引用 |
+
+---
+
+## 版本：v0.5.0 — 清理不支持回测的 yfinance 数据源，合并 `get_news_sentiment`
+
+**改动日期**：2026-04-04  
+**改动摘要**：项目只做回测，删除无法提供历史数据的 yfinance vendor（`get_news`、`get_global_news`、`get_fundamentals`），统一使用 Alpha Vantage；删除 `get_news_sentiment` 工具，因 Alpha Vantage NEWS_SENTIMENT API 已自带情绪评分
+
+---
+
+### 一、删除 yfinance news vendor
+
+**删除原因**：yfinance `get_news` 只返回最新 20 条、`get_global_news` 的 `yf.Search()` 只搜当前新闻，均无法用于历史回测。Alpha Vantage NEWS_SENTIMENT 端点支持 `time_from/time_to` 任意历史区间查询。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/yfinance_news.py` | **删除**（整个文件，包含 `get_news_yfinance` 和 `get_global_news_yfinance`） |
+| `tradingagents/dataflows/interface.py` | 移除 `from .yfinance_news import ...`；移除 `VENDOR_METHODS["get_news"]` 和 `["get_global_news"]` 中的 yfinance 条目 |
+
+### 二、删除 yfinance fundamentals vendor
+
+**删除原因**：`ticker.info` 只返回当前快照，无历史接口。Alpha Vantage OVERVIEW 端点同样为当前快照，但统一数据源减少依赖。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/interface.py` | 移除 `get_fundamentals as get_yfinance_fundamentals` import；移除 `VENDOR_METHODS["get_fundamentals"]` 中的 yfinance 条目 |
+
+### 三、保留 `get_insider_transactions` 双 vendor
+
+**保留原因**：yfinance `ticker.insider_transactions` 返回完整历史交易记录（含日期），可用于回测，保留作为 fallback。
+
+### 四、删除 `get_news_sentiment` 工具
+
+**删除原因**：该工具从 yfinance 拉新闻后用 VADER 做情绪评分，与 `get_news` 数据源重复。Alpha Vantage NEWS_SENTIMENT API 已自带 `overall_sentiment_score`、`ticker_sentiment_score` 等字段，无需单独情绪评分步骤。
+
+| 文件 | 操作 |
+|------|------|
+| `tradingagents/dataflows/sentiment_utils.py` | 删除 `get_news_sentiment()` 函数和 `_save_sentiment_cache()` 内部函数 |
+| `tradingagents/dataflows/interface.py` | 移除 `get_news_sentiment` 的 import、`TOOLS_CATEGORIES` 条目、`VENDOR_METHODS` 条目 |
+| `tradingagents/agents/utils/sentiment_tools.py` | 删除 `get_news_sentiment` @tool 包装函数 |
+| `tradingagents/agents/utils/agent_utils.py` | 移除 `get_news_sentiment` import |
+
+### 五、变更后 vendor 映射
+
+| 工具 | 可用 vendor |
+|------|------------|
+| `get_news` | `alpha_vantage` |
+| `get_global_news` | `alpha_vantage` |
+| `get_fundamentals` | `alpha_vantage` |
+| `get_insider_transactions` | `alpha_vantage`, `yfinance` |
+
+### 六、未受影响
+
+- `sentiment_utils.py` 中 VADER 核心函数（`score_text_sentiment`、`_label_sentiment`、`_get_vader`）和 `get_reddit_sentiment` 保留
+- `sentiment_tools.py` 中 `get_reddit_sentiment` @tool 保留
+- `y_finance.py` 中 `get_fundamentals` 函数本体保留（仅不再注册为 vendor）
+
+---
 

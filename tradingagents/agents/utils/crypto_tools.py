@@ -3,23 +3,6 @@ from typing import Annotated
 from tradingagents.dataflows.interface import route_to_vendor
 
 
-@tool
-def get_crypto_price(
-    symbol: Annotated[str, "Crypto ticker symbol, e.g. BTC, ETH, SOL"],
-    currency: Annotated[str, "Quote currency, default usd"] = "usd",
-) -> str:
-    """
-    Get real-time cryptocurrency price snapshot including market cap,
-    24h volume, price change (24h/7d/30d), and all-time high.
-    Uses CoinGecko public API (no API key required).
-    Args:
-        symbol: Crypto ticker such as BTC, ETH, SOL, BNB, XRP
-        currency: Quote currency (default: usd)
-    Returns:
-        Formatted string with current price and market overview
-    """
-    return route_to_vendor("get_crypto_price", symbol, currency)
-
 
 @tool
 def get_crypto_historical(

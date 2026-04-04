@@ -62,58 +62,6 @@ def _resolve_coin_id(symbol: str) -> str:
 # 工具函数（供 interface.py 注册为 Agent 可调用工具）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_crypto_price(
-    symbol: Annotated[str, "Crypto ticker symbol, e.g. BTC, ETH, SOL"],
-    currency: Annotated[str, "Quote currency, default usd"] = "usd",
-) -> str:
-    """
-    获取加密货币实时价格及市场概览（当前时刻快照）。
-    返回格式化字符串，供 Agent 直接阅读。
-    """
-    coin_id = _resolve_coin_id(symbol)
-    try:
-        data = _cg_get(
-            f"/coins/{coin_id}",
-            params={
-                "localization": "false",
-                "tickers": "false",
-                "community_data": "false",
-                "developer_data": "false",
-            },
-        )
-        market = data.get("market_data", {})
-        cur = currency.lower()
-        price = market.get("current_price", {}).get(cur, "N/A")
-        mktcap = market.get("market_cap", {}).get(cur, "N/A")
-        vol_24h = market.get("total_volume", {}).get(cur, "N/A")
-        chg_24h = market.get("price_change_percentage_24h", "N/A")
-        chg_7d = market.get("price_change_percentage_7d", "N/A")
-        chg_30d = market.get("price_change_percentage_30d", "N/A")
-        high_24h = market.get("high_24h", {}).get(cur, "N/A")
-        low_24h = market.get("low_24h", {}).get(cur, "N/A")
-        supply = market.get("circulating_supply", "N/A")
-        ath = market.get("ath", {}).get(cur, "N/A")
-        ath_date = market.get("ath_date", {}).get(cur, "N/A")
-
-        result = (
-            f"# Crypto Market Snapshot: {symbol.upper()} ({coin_id})\n"
-            f"# Quote currency: {cur.upper()}\n"
-            f"# Retrieved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
-            f"Current Price:          {price:,.4f} {cur.upper()}\n"
-            f"24h High / Low:         {high_24h:,.4f} / {low_24h:,.4f}\n"
-            f"24h Price Change:       {chg_24h:.2f}%\n"
-            f"7d Price Change:        {chg_7d:.2f}%\n"
-            f"30d Price Change:       {chg_30d:.2f}%\n"
-            f"Market Cap:             {mktcap:,.0f} {cur.upper()}\n"
-            f"24h Volume:             {vol_24h:,.0f} {cur.upper()}\n"
-            f"Circulating Supply:     {supply:,.0f} {symbol.upper()}\n"
-            f"All-Time High:          {ath:,.4f} {cur.upper()} (on {ath_date[:10] if ath_date else 'N/A'})\n"
-        )
-        return result
-    except Exception as e:
-        return f"Error fetching crypto price for {symbol}: {e}"
-
-
 def get_crypto_historical(
     symbol: Annotated[str, "Crypto ticker symbol, e.g. BTC, ETH"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],

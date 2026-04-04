@@ -355,6 +355,29 @@ RAP 的核心是”按需检索”而非把所有数据塞进 prompt——当 ag
 
 ### 1. Agent 角色设计修改
 
+tools修改以支持回测
+
+`get_news`改alpha vantage
+`get_global_news` 改alpha vantage
+
+`get_insider_transactions`有历史数据
+
+ `get_fundamentals`目前两个数据源都不支持历史
+
+以下工具的 API 本身只返回最新数据，无法通过本地处理解决，回测需要替换数据源：
+
+| 工具 | API 限制 | 回测方案 |
+|------|----------|----------|
+| `get_news` (yfinance vendor) | API 只返回最新 20 条，无历史查询接口 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage（支持 `time_from/time_to`） |
+| `get_news_sentiment` | 与 `get_news` 拉同一批 yfinance 新闻，功能重复 | ✅ 已删除，Alpha Vantage NEWS_SENTIMENT API 自带情绪评分，无需单独 VADER |
+| `get_global_news` (yfinance vendor) | `yf.Search()` 只搜当前新闻 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage |
+| `get_reddit_sentiment` | Reddit API 只搜最近一个月帖子 | 实盘可用，回测不可用，无替代 |
+| `get_crypto_market_overview` | CoinGecko API 只返回当前排行，不接受日期参数 | 实盘可用，回测无替代 |
+| `get_fundamentals` (yfinance vendor) | `ticker.info` 只返回当前基本面，无历史接口 | ✅ 已删除 yfinance vendor，统一使用 Alpha Vantage（注：AV OVERVIEW 端点同样为当前快照） |
+| `get_insider_transactions` (yfinance vendor) | 只返回最新交易记录，无历史查询 | 保留 yfinance（有完整历史交易记录）+ Alpha Vantage 双 vendor |
+| `get_balance_sheet/cashflow/income_statement` (yfinance) | 返回多期财报但无日期过滤，回测有数据泄漏风险 | 需加按日期截断逻辑 |
+
+
 sentiment analyst功能改进
 
 macro analyst改进
@@ -378,7 +401,6 @@ crypto链设计
 | 文件 | 写入字段 | 绑定工具 |
 |------|----------|----------|
 | `crypto_analyst.py` | `state["crypto_report"]`（原为 `market_report`，已修复字段冲突） | `get_crypto_price`, `get_crypto_historical`, `get_crypto_market_overview`, `get_macro_snapshot` |
-| `sentiment_analyst.py` | `state["sentiment_report"]` | `get_news`, `get_news_sentiment`, `get_reddit_sentiment` |
 | `macro_analyst.py` | `state["news_report"]` | `get_macro_snapshot`, `get_macro_indicator`, `list_available_macro_series` |
 
 ##### 修改的现有文件

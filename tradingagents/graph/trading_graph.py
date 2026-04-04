@@ -32,7 +32,6 @@ from tradingagents.agents.utils.agent_utils import (
     get_insider_transactions,
     get_global_news,
     # 新增数据源工具
-    get_crypto_price,
     get_crypto_historical,
     get_crypto_market_overview,
     get_macro_indicator,
@@ -199,7 +198,6 @@ class TradingAgentsGraph:
             # ── 新增数据源 ToolNode ─────────────────────────────────────
             "crypto": ToolNode(
                 [
-                    get_crypto_price,
                     get_crypto_historical,
                     get_crypto_market_overview,
                     get_macro_snapshot,
