@@ -34,7 +34,7 @@ config["data_vendors"] = {
 # 首次调用自动缓存到 ./data_cache/{category}/{symbol}/*.parquet
 # 后续运行命中缓存则跳过 API 调用（离线可用）
 ta = TradingAgentsGraph(
-    selected_analysts=["market", "social", "news", "fundamentals"],
+    selected_analysts=["market", "sentiment", "news", "fundamentals"],
     debug=True,
     config=config,
 )
@@ -50,7 +50,7 @@ print(decision)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 标准股票分析——同上方默认运行，取消注释可独立使用
-# ta2 = TradingAgentsGraph(selected_analysts=["market", "social", "news", "fundamentals"], config=config)
+# ta2 = TradingAgentsGraph(selected_analysts=["market", "sentiment", "news", "fundamentals"], config=config)
 # _, decision = ta2.propagate("NVDA", "2024-05-10")
 
 # 加密货币分析（crypto + sentiment，不需要 FRED API Key）
@@ -59,12 +59,12 @@ print(decision)
 # crypto_config["backend_url"] = "https://openrouter.ai/api/v1"
 # crypto_config["quick_think_llm"] = "gpt-5-mini"
 # crypto_config["deep_think_llm"] = "gpt-5-mini"
-# ta_crypto = TradingAgentsGraph(selected_analysts=["crypto", "sentiment", "fundamentals"], config=crypto_config)
+# ta_crypto = TradingAgentsGraph(selected_analysts=["crypto", "fundamentals"], config=crypto_config)
 # _, decision = ta_crypto.propagate("BTC", "2024-05-10")
 
 # 全量分析（含宏观加分项，需要 FRED_API_KEY 配置在 .env）
 # ta_full = TradingAgentsGraph(
-#     selected_analysts=["market", "social", "news", "fundamentals", "sentiment", "crypto", "macro"],
+#     selected_analysts=["market", "sentiment", "news", "fundamentals", "crypto", "macro"],
 #     config=crypto_config,
 # )
 # _, decision = ta_full.propagate("BTC", "2024-05-10")

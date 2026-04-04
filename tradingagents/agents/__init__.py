@@ -5,9 +5,8 @@ from .utils.memory import FinancialSituationMemory
 from .analysts.fundamentals_analyst import create_fundamentals_analyst
 from .analysts.market_analyst import create_market_analyst
 from .analysts.news_analyst import create_news_analyst
-from .analysts.social_media_analyst import create_social_media_analyst
-# ── 新增 Analyst ────────────────────────────────────────────────────────────
 from .analysts.sentiment_analyst import create_sentiment_analyst
+# ── 新增 Analyst ────────────────────────────────────────────────────────────
 from .analysts.crypto_analyst import create_crypto_analyst
 from .analysts.macro_analyst import create_macro_analyst
 
@@ -39,10 +38,9 @@ __all__ = [
     "create_aggressive_debator",
     "create_portfolio_manager",
     "create_conservative_debator",
-    "create_social_media_analyst",
+    "create_sentiment_analyst",
     "create_trader",
     # 新增
-    "create_sentiment_analyst",
     "create_crypto_analyst",
     "create_macro_analyst",
 ]

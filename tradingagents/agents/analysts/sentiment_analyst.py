@@ -1,48 +1,22 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from tradingagents.agents.utils.agent_utils import build_instrument_context
-from tradingagents.agents.utils.news_data_tools import get_news
-from tradingagents.agents.utils.sentiment_tools import get_news_sentiment, get_reddit_sentiment
+import time
+import json
+from tradingagents.agents.utils.agent_utils import build_instrument_context, get_news
+from tradingagents.dataflows.config import get_config
 
 
 def create_sentiment_analyst(llm):
-    """
-    Sentiment Analyst Agent — quantitative sentiment scoring layer.
-
-    Differences from social_media_analyst (qualitative baseline):
-    - Calls get_news_sentiment() to obtain VADER compound scores per article
-    - Calls get_reddit_sentiment() for social media signal (if credentials configured)
-    - Outputs structured sentiment summary: POSITIVE/NEUTRAL/NEGATIVE breakdown,
-      aggregate compound score, trend direction, and 5-point risk flag
-    - Writes to state["sentiment_report"] (replaces or augments social analyst)
-    """
-
     def sentiment_analyst_node(state):
         current_date = state["trade_date"]
         instrument_context = build_instrument_context(state["company_of_interest"])
 
         tools = [
             get_news,
-            get_news_sentiment,
-            get_reddit_sentiment,
         ]
 
         system_message = (
-            "You are a quantitative sentiment analyst specializing in market sentiment "
-            "measurement for stocks and crypto assets. "
-            "Your job is to produce a structured, data-driven sentiment report by:\n"
-            "1. Calling get_news_sentiment() to retrieve VADER-scored news articles "
-            "(compound score: -1 = very negative, +1 = very positive, threshold ±0.05).\n"
-            "2. Optionally calling get_reddit_sentiment() for social media signal.\n"
-            "3. Calling get_news() for qualitative context on major headlines.\n\n"
-            "Structure your final report with the following sections:\n"
-            "- **Sentiment Summary**: Overall label (POSITIVE/NEUTRAL/NEGATIVE), "
-            "aggregate compound score, article count breakdown\n"
-            "- **Trend Analysis**: Is sentiment improving, deteriorating, or stable? "
-            "Cite specific dates or events\n"
-            "- **Key Drivers**: Top 3 positive and top 3 negative catalysts found in news\n"
-            "- **Risk Flag** (1–5 scale): 1 = very bullish sentiment, 5 = very bearish sentiment\n"
-            "- **Markdown Table**: Summary of top 10 articles with date, title, and sentiment score\n\n"
-            "Be objective and data-driven. Quote compound scores directly in your analysis."
+            "You are a social media and company specific news researcher/analyst tasked with analyzing social media posts, recent company news, and public sentiment for a specific company over the past week. You will be given a company's name your objective is to write a comprehensive long report detailing your analysis, insights, and implications for traders and investors on this company's current state after looking at social media and what people are saying about that company, analyzing sentiment data of what people feel each day about the company, and looking at recent company news. Use the get_news(query, start_date, end_date) tool to search for company-specific news and social media discussions. Try to look at all sources possible from social media to sentiment to news. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
+            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -63,14 +37,16 @@ def create_sentiment_analyst(llm):
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([t.name for t in tools]))
+        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(instrument_context=instrument_context)
 
         chain = prompt | llm.bind_tools(tools)
+
         result = chain.invoke(state["messages"])
 
         report = ""
+
         if len(result.tool_calls) == 0:
             report = result.content
 

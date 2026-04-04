@@ -119,11 +119,11 @@
 
 ---
 
-### ✅ 已实现方案（2026-03-28）
+#### ✅ 已实现方案（2026-03-28）
 
 **原则**：免费优先、零 API Key 优先、自动缓存、#3 直接复用。
 
-#### 数据类型与数据源选型
+##### 数据类型与数据源选型
 
 | 数据类别 | 数据源 | API Key | 实时/离线 | 说明 |
 |----------|--------|---------|-----------|------|
@@ -136,7 +136,7 @@
 | **新闻情绪** | **VADER on yfinance** | **不需要** | **两者** | ✅ 新增，零额外依赖 |
 | **社交情绪** | **Reddit PRAW（可选）** | **免费申请** | **实时** | ✅ 新增，不填则降级为新闻情绪 |
 
-#### 日K数据市场覆盖（2026-03-29 确认）
+##### 日K数据市场覆盖（2026-03-29 确认）
 
 通过 **yfinance 一个库**，只需修改 ticker 格式即可接入以下市场，无需切换数据源：
 
@@ -152,14 +152,14 @@
 
 **结论**：核心测试品种（美股 + 加密货币）已完整覆盖，港股/A股可用但不作为主要测试对象。
 
-#### 实时 vs 离线——问题回答
+##### 实时 vs 离线——问题回答
 
 > **哪种方式免费且不需大量人工维护？**
 > 
 > - **最优选：按需拉取（On-demand Fetch）**——Agent 运行时直接调用数据函数，无需维护任何定时任务或 WebSocket 连接。yfinance / CoinGecko / FRED 均支持。
 > - 定时任务/WebSocket 适合生产级系统，本项目以研究为主，按需拉取即可。
 
-#### 历史数据存储是否必要？
+##### 历史数据存储是否必要？
 
 > **必要，但无需数据库**——采用 Parquet 文件缓存：
 > - 首次调用 → 写入 `data_cache/{category}/{symbol}/` 目录
@@ -167,7 +167,7 @@
 > - #3 RAP 向量库直接 `load_dataframe()` 读取，无需重复采集逻辑
 > - 文件结构：`data_cache/crypto/BTC/2024-01-01_2024-12-31.parquet`
 
-#### 数据格式标准（口径一致）
+##### 数据格式标准（口径一致）
 
 所有数据函数统一返回**带 header 注释的 CSV 字符串**（与现有 yfinance 函数一致，供 LLM 直接阅读），同时在内部将 DataFrame 写入 Parquet 缓存（供 #3 使用）。
 
@@ -189,7 +189,7 @@ date, title, sentiment (POSITIVE/NEUTRAL/NEGATIVE), compound, positive, negative
 date, value, series_id, description
 ```
 
-#### 新增文件清单
+##### 新增文件清单
 
 | 文件 | 职责 |
 |------|------|
@@ -198,7 +198,7 @@ date, value, series_id, description
 | `tradingagents/dataflows/sentiment_utils.py` | VADER 情绪评分（新闻+可选 Reddit） |
 | `tradingagents/dataflows/local_cache.py` | Parquet 缓存读写（#3 直接调用） |
 
-#### 配置方式（`default_config.py` / `main.py`）
+##### 配置方式（`default_config.py` / `main.py`）
 
 ```python
 config["data_vendors"] = {
@@ -208,13 +208,12 @@ config["data_vendors"] = {
 }
 ```
 
-#### 待补充内容（此实现未覆盖）
-
+##### 待补充内容（此实现未覆盖）
 - **SEC EDGAR 财务报告采集**：10-K/10-Q 结构化解析（归属 #3，但采集接口可在此加）
 - **数据采集脚本（批量历史预加载）**：供 #7 交付物使用，需单独编写
 - **降级策略**：当 CoinGecko rate limit 触发时，自动降级到 yfinance 加密报价
 
-#### 社媒评论时间过滤（2026-03-29 确认）
+##### 社媒评论时间过滤（2026-03-29 确认）
 
 **核心要求**：社媒评论必须能按时间区分，确保回测时不使用未来数据。
 
@@ -229,9 +228,9 @@ config["data_vendors"] = {
 
 ---
 
-### 数据流全链路梳理（2026-03-29）
+#### 数据流全链路梳理（2026-03-29）
 
-#### 一、数据从采集到决策的完整路径
+##### 一、数据从采集到决策的完整路径
 
 ```
 外部 API / 本地缓存
@@ -273,7 +272,7 @@ Portfolio Manager（读取风险辩论结果 → 最终决策 BUY/HOLD/SELL）
 SignalProcessor（提取单词决策标签）→ 输出
 ```
 
-#### 二、各数据类型的具体用途
+##### 二、各数据类型的具体用途
 
 | 数据类型 | 采集函数 | 消费的 Analyst | 写入字段 | 传递给下游 |
 |----------|---------|--------------|---------|-----------|
@@ -286,7 +285,7 @@ SignalProcessor（提取单词决策标签）→ 输出
 | 宏观经济指标 | `get_macro_snapshot`, `get_macro_indicator` | macro_analyst | `news_report` | 同上 |
 | 历史决策记忆 | BM25 检索 `FinancialSituationMemory` | Bull/Bear Researcher | `investment_debate_state` | Research Manager |
 
-#### 三、数据层潜在问题清单
+##### 三、数据层潜在问题清单
 
 **P1 — 高优先级（影响回测正确性）**
 
@@ -337,7 +336,30 @@ SignalProcessor（提取单词决策标签）→ 输出
 
 > **与 #3 的分工边界**：本任务只做数据接入与存储，不涉及向量化；宏观指标、情绪数据等同时被 #2（实时输入）和 #3（历史检索）使用，采集接口统一在此定义，#3 直接调用。
 
----
+
+### 3. RAP 向量库外部数据（需支持回测的历史数据）
+
+**职责**：负责向量化索引与检索逻辑，数据采集依赖 #2，不重复实现。
+
+RAP 的核心是”按需检索”而非把所有数据塞进 prompt——当 agent 分析 NVDA 时，从向量库找出历史上最相似的市场条件下的决策记录，注入当前 prompt，让 LLM 有参照。
+
+候选数据源（采集由 #2 负责，本任务负责向量化入库与检索）：
+
+- **宏观经济指标**：利率、CPI、非农数据等时序数据 → 历史序列向量化，按相似市场条件检索
+- **财务报告 / SEC 文件**：10-K、10-Q 等结构化财务数据，按 ticker + 时间索引入向量库（无实时需求，采集也归本任务）
+- **分析师研报**：外部机构研报、评级变更，结构化后按相关性检索注入 prompt（无实时需求，采集也归本任务）
+- **历史情绪数据**：社交媒体情绪历史记录，离线入库后按相似市场条件检索
+
+
+## 我的设计工作
+
+### 1. Agent 角色设计修改
+
+sentiment analyst功能改进
+
+macro analyst改进
+
+crypto链设计
 
 #### Agent 层集成（完整实现记录，2026-03-28）
 
@@ -398,502 +420,723 @@ pip install fredapi vaderSentiment pyarrow praw yfinance
 
 > `yfinance` 为加密货币历史数据的主要来源（BTC-USD / ETH-USD），CoinGecko 仅用于实时快照。
 
-### 3. RAP 向量库外部数据（需支持回测的历史数据）
+### 2. Agent机制设计修改
+#### Analyst Tool-Call 循环保护与异常传播
 
-**职责**：负责向量化索引与检索逻辑，数据采集依赖 #2，不重复实现。
+**现状分析**：
 
-RAP 的核心是”按需检索”而非把所有数据塞进 prompt——当 agent 分析 NVDA 时，从向量库找出历史上最相似的市场条件下的决策记录，注入当前 prompt，让 LLM 有参照。
+##### 当前
+每个 Analyst 节点通过 LangGraph ReAct 循环调用工具：
+```
+Analyst Node (LLM 生成 tool_calls) → tools_xxx (ToolNode 执行) → Analyst Node → ... → Msg Clear
+```
+- 循环退出条件**仅**依赖 `len(result.tool_calls) == 0`，无最大迭代次数保护
+- `ToolNode` 在工具抛异常时会捕获并包装为 `ToolMessage(content="Error: ...")` 返回给 LLM
+- LLM 能看到错误信息并**智能调整参数**（如修正 ticker 格式），但对系统性错误（API key 缺失、服务宕机）无能为力，会无限重试
 
-候选数据源（采集由 #2 负责，本任务负责向量化入库与检索）：
+**各 Analyst 正常 tool_call 轮次统计**：
 
-- **宏观经济指标**：利率、CPI、非农数据等时序数据 → 历史序列向量化，按相似市场条件检索
-- **财务报告 / SEC 文件**：10-K、10-Q 等结构化财务数据，按 ticker + 时间索引入向量库（无实时需求，采集也归本任务）
-- **分析师研报**：外部机构研报、评级变更，结构化后按相关性检索注入 prompt（无实时需求，采集也归本任务）
-- **历史情绪数据**：社交媒体情绪历史记录，离线入库后按相似市场条件检索
+| Analyst | Tools 数量 | 正常轮次 | 说明 |
+|---------|-----------|---------|------|
+| Market | 2 | 2 | prompt 要求先 get_stock_data 再 get_indicators，串行 |
+| Fundamentals | 4 | 1-2 | LLM 可能一次 batch 多个 tool_call |
+| News | 2 | 1-2 | |
+| Social | 1 | 1 | |
+| Sentiment | 3 | 1-2 | |
+| Crypto | 4 | 1-2 | |
+| Macro | 3 | 2-3 | get_macro_indicator 可能被多次调用（拉不同 series） |
 
-### 4. 多资产组合设计
+**风险场景**：
 
-（教授建议）将 TradingAgents 从单支股票扩展为支持组合管理。
+| 场景 | LLM 能否自愈 | 当前保护 |
+|------|-------------|----------|
+| 参数错误（ticker 格式不对） | ✅ 通常 1-2 次自纠正 | 无 |
+| 部分工具失败（如 reddit API 未配置） | ✅ 放弃失败工具，用成功数据写报告 | 无 |
+| 系统性失败（API key 无效、服务宕机、网络断） | ❌ 每次重试得到相同错误，无法自愈 | **无 → 死循环** |
 
-**设计方案（Spec）：**
+**最严重的隐患 — 空报告静默穿透**：
 
-**核心扩展点：** 当前系统每次 `propagate(ticker, date)` 只分析一支股票，输出"买 / 卖 / 持有"决策。多资产组合扩展后，输出仓位权重向量，如 `{NVDA: 0.4, BTC: 0.3, AAPL: 0.3}`。
+当 Analyst 工具全部失败时，`report = ""`（空字符串）会一路传播：
+```
+Analyst (report="") → Bull/Bear Researcher (基于空数据辩论 → 纯幻觉)
+    → Research Manager (基于幻觉辩论做决策) → Trader → Portfolio Manager
+    → 输出格式完美但毫无数据基础的 BUY/SELL 决策
+```
+系统不会崩溃、不会报错，用户无法感知底层数据获取全部失败。
 
-**工作流变更：** 外层 for loop 对每支股票分别运行分析师节点 → 汇总各 ticker 报告 → Portfolio Manager 生成权重分配（含相关性、波动率计算）
 
-**约束：** LLM 上下文窗口限制（多报告拼接需摘要压缩）；可用 asyncio 并行各 ticker 减少耗时。
+##### 改进方案：
 
-### 5. 滚动前向验证（Roll-forward Validation）
+**① Analyst 节点内部：tool_call 计数 + 截断后降级输出（合并原 ①②）**
 
-优化滚动窗口以降低过拟合。
+核心问题：如果在 `conditional_logic.py` 的 conditional edge 处截断，LLM 最后一次输出的是带 `tool_calls` 的消息，
+`report` 赋值逻辑只在 `tool_calls == 0` 时才执行 → **report 一定为空**，LLM 没有机会输出失败说明就被路由到下一个节点了。
 
-**设计方案（Spec）：**
-
-**目标**：前向验证（Walk-forward Testing）避免未来数据泄漏（Look-ahead Bias）。
-
-**验证流程（步长 = 1月）：**
-
-| 训练窗口 (In-sample) | 验证窗口 (Out-of-sample) |
-|---|---|
-| 2023-01-01 ~ 2023-12-31 | 2024-01-01 ~ 2024-03-31 |
-| 2023-04-01 ~ 2024-03-31 | 2024-04-01 ~ 2024-06-30 |
-| 2023-07-01 ~ 2024-06-30 | 2024-07-01 ~ 2024-09-30 |
-
-**防泄漏控制：** yfinance / CoinGecko 按日期查询天然不泄漏；VADER 用 `lookback_days` 控制窗口；FRED 使用 `realtime_start` 参数；Agent 长期记忆仅在训练期积累，验证期只读不写。
-
-### 6. 对多 agent 策略结果进行严格的金融回测与评估
-
-**设计方案（Spec）：**
-
-**回测伪代码：**
+因此，**计数和降级必须在 Analyst 节点内部完成**，而非在 conditional edge 中。改造方式：
 
 ```python
-def run_backtest(ticker, start_date, end_date, config):
-    date_range = get_trading_days(start_date, end_date)
-    portfolio = {"cash": 100_000, "position": 0, "history": []}
-    for date in date_range:
-        _, decision = ta.propagate(ticker, date)
-        action = parse_decision(decision)  # "buy" / "sell" / "hold"
-        portfolio = execute_trade(portfolio, action, get_price(ticker, date))
-    return compute_metrics(portfolio)
+# 以 market_analyst.py 为例，其余 Analyst 同理
+MAX_TOOL_ITERATIONS = 8
+
+def market_analyst_node(state):
+    # --- 计算当前节点已执行的 tool_call 轮次 ---
+    tool_round_count = 0
+    for m in reversed(state["messages"]):
+        if hasattr(m, 'tool_calls') and m.tool_calls:
+            tool_round_count += 1
+        elif hasattr(m, 'type') and m.type == 'tool':
+            continue  # ToolMessage，跳过
+        else:
+            break
+
+    # --- 达到上限：不再绑定 tools，强制 LLM 用已有信息写报告 ---
+    if tool_round_count >= MAX_TOOL_ITERATIONS:
+        fallback_prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You have reached the maximum number of tool call attempts. "
+             "Some or all data retrieval has failed. Based on whatever information "
+             "IS available in the conversation history, write the best report you can. "
+             "Clearly state which data sources were unavailable and mark your report "
+             "with [PARTIAL DATA] or [DATA UNAVAILABLE] at the beginning."),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+        result = (fallback_prompt | llm).invoke(state["messages"])
+        # result.tool_calls 为空（因为没绑定 tools），一定走 report 赋值
+        return {
+            "messages": [result],
+            "market_report": result.content,
+        }
+
+    # --- 正常路径（原逻辑不变）---
+    # ... tools, prompt, chain 等原有代码 ...
+    chain = prompt | llm.bind_tools(tools)
+    result = chain.invoke(state["messages"])
+
+    report = ""
+    if len(result.tool_calls) == 0:
+        report = result.content
+
+    return {
+        "messages": [result],
+        "market_report": report,
+    }
 ```
 
-**评估指标：** CAGR = `(final/initial)^(252/n)-1`；夏普比率 = `(CAGR-0.05)/vol`；最大回撤 = `max(1-value/rolling_max)`；波动率 = `std(daily_returns)*sqrt(252)`
+这样截断后 LLM 能：
+- 看到之前所有 ToolMessage（包括成功和失败的）
+- 基于已获取的部分数据写报告（graceful degradation）
+- 明确标注哪些数据源缺失
+- 输出不带 `tool_calls` 的纯文本 → `should_continue_xxx` 正常路由到 `Msg Clear` → report 不为空
 
-**对比基准：** Buy-and-Hold / 单 Agent Bot（无辩论）/ 动量策略（20日均线穿越）
+**② Researcher/Manager 层：检测数据缺失并降级决策**
 
-### 7. 交付脚本数据收集/回测/计算，以及demo演示脚本
+在 Bull/Bear Researcher 和 Research Manager 的 prompt 中加入数据缺失处理指令：
 
-**已完成（可直接使用）：Demo 脚本 `main.py`** — 展示如何对 NVDA/2024-05-10 运行完整多 agent 分析
-
-```bash
-cp .env.example .env          # 填写 OPENAI_API_KEY 等
-pip install -e ".[dev]"
-pip install fredapi vaderSentiment pyarrow praw yfinance
-python main.py
+```
+IMPORTANT: If any analyst report contains "[DATA UNAVAILABLE]" or "[PARTIAL DATA]", you MUST:
+1. Explicitly acknowledge which data sources are missing in your analysis
+2. Lower your conviction level accordingly
+3. Do NOT fabricate data or make claims based on unavailable information
+4. If critical data sources (market + fundamentals) are both unavailable, 
+   recommend HOLD with a clear "INSUFFICIENT DATA" warning
 ```
 
-**待实现（Spec）：**
+**③ propagate() 最外层：返回值附带数据完整性标记**
 
-- **数据预加载脚本** `scripts/fetch_data.py`：批量拉取 OHLCV/情绪/宏观数据写入 `data_cache/`，支持参数 `--tickers NVDA BTC --start 2024-01-01 --end 2024-12-31`
-- **回测脚本** `scripts/backtest.py`：跨日期调用 `propagate()`，输出 6 项指标，与基准对比
+```python
+# trading_graph.py propagate() 返回前
+UNAVAILABLE_MARKERS = ("[DATA UNAVAILABLE]", "[PARTIAL DATA]")
 
+data_flags = {}
+for field in ("market_report", "news_report", "fundamentals_report",
+              "sentiment_report", "crypto_report"):
+    val = final_state.get(field, "")
+    data_flags[field] = (
+        "available" if val.strip() and not any(m in val for m in UNAVAILABLE_MARKERS)
+        else "partial" if val.strip()
+        else "missing"
+    )
+# 附加到返回结果中，让调用方知道决策基于多完整的数据
+```
 
-## 我的设计工作
-
-### 1. Agent 角色设计修改
-
-
-#### 1.4 是否新增会议主持者角色
-
-
-### 2. Agent机制设计修改
-#### 2.1 Agent自验证循环探究改进：
-如何避免死循环：中间件是否跟踪了文件编辑次数，超过阈值则提醒重新审视？
-如何避免跳过验证：中间件强制执行玩这个验证
-
-#### 2.2 multi-agent(agent)自主决策:辩论轮数限制是否要修改，终止循环是否应该自己判断
-
-#### 2.3 动态交互:多agent阶段是否应该自由交互
-
-#### 2.4 设计单agent和多agent系统tools暴露机制，实验性加入更多
-
-
-
-### 3. 长期记忆修改
-#### 3.1 新增持久化记忆存储
-**原始限制（已规划改进）**：
-- ~~`FinancialSituationMemory` 只在内存中存储，进程重启后归零，无磁盘持久化~~ → **改进方向：ChromaDB 本地持久化，启动时自动加载**
-- ~~BM25 是词频匹配，无法捕捉语义关联（如"利率攀升"和"加息周期"）~~ → **改进方向：加入稠密向量检索，BM25 + 向量 RRF 混合**
-升级记忆系统为混合检索 + 磁盘持久化：BM25（词汇匹配）+ 稠密向量检索（语义匹配），结果通过 RRF 融合后注入 prompt；记忆数据持久化到本地向量库（ChromaDB），重启后不丢失；保留冷启动保护策略（memory_warmup_runs）
-
-
-#### 3.2 新增辩手记忆
-**：为风险辩手补充记忆**：当前 Aggressive/Conservative/Neutral 三个风险辩手没有记忆（DEV_SPEC 已标记为不对称问题），而投资辩论的 Bull/Bear 有独立记忆池。应为风险辩手新增 `aggressive_memory`、`conservative_memory`、`neutral_memory` 三个 `FinancialSituationMemory` 实例，使风险辩论也能从历史决策中学习。同时确保 Single-Agent 对比实验中该阶段有记忆维度的对比价值。
-
-
-#### 3.3 部分记忆机制重构
-记忆功能冷启动策略，设置合理轮数不使用长期记忆，积累到一定阈值后开放查询
-
-
-### 4. 上下文管理重构
-#### 4.1 上下文隔离
-**现状评估**：现有系统已有三层部分隔离：
-
-1. **Msg Clear（消息清理节点）**：每个 Analyst 节点完成后（报告生成 or tool call 循环结束），经过 `Msg Clear {Analyst}` 节点，删除 `state["messages"]` 中所有消息并注入 "Continue" 占位符（Anthropic 模型要求 messages 非空）。防止某个 Analyst 的多轮工具调用历史（tool call / tool result 消息串）累积到下一个 Analyst 的上下文里。Msg Clear 仅在**相邻两个 Analyst 之间**起作用。
-
-2. **辩论阶段绕过 `messages`**：Analyst 阶段通过 `chain.invoke(state["messages"])` + MessagesPlaceholder 传入 LLM 上下文；而 Bull/Bear Researcher、三个风险辩手、Research Manager、Portfolio Manager、Trader 全部**不读取** `state["messages"]`，而是从具名字段手动构建 prompt 后直接 `llm.invoke(prompt)` 调用，与 Analyst 阶段的 messages 上下文完全切断。
-
-3. **具名嵌套字段（InvestDebateState、RiskDebateState）**：辩论内部状态不写入扁平 messages，而是封装为两个嵌套 TypedDict。`InvestDebateState` 含 `bull_history`、`bear_history`、`history`、`current_response`、`judge_decision`、`count`；`RiskDebateState` 含三个辩手独立 history 字段、`latest_speaker`、三个 `current_*_response`、`judge_decision`、`count`。每个辩手只更新自己所在的子状态对象，辩论历史按角色分开追踪，互不覆盖。
-
-但上述隔离仍存在以下核心问题：
-- 所有 agent 共享同一个扁平 `AgentState`，无访问控制，任意 agent 可读任意字段，靠编写时自觉维护
-
-**方案：字段白名单（AGENT_FIELD_PERMISSIONS）**
-在一个集中位置定义每个 agent 允许读取的字段白名单，在节点入口做提取/校验，超出授权范围的字段不传给 LLM。字段本身即防火墙，无需引入父子 agent 结构。
-
-优先选择白名单而非分层 State 结构的原因：改动小，现有架构基本不变；隔离语义集中可查；后续若 agent 数量大幅增加再考虑迁移分层 State。
-
-**各 agent 授权字段（待实现）**：
-
-| Agent | 允许读取的字段 |
-|-------|--------------|
-| Market / Social / News / Fundamentals Analyst | `messages`、`company_of_interest`、`trade_date` |
-| Bull / Bear Researcher | `market_report`、`sentiment_report`、`news_report`、`fundamentals_report`、`investment_debate_state`、`company_of_interest` |
-| Research Manager | `market_report`、`sentiment_report`、`news_report`、`fundamentals_report`、`investment_debate_state`、`company_of_interest` |
-| Trader | `investment_plan`（Research Manager 输出）、`market_report`、`sentiment_report`、`news_report`、`fundamentals_report`、`company_of_interest` |
-| Aggressive / Conservative / Neutral Debater | `trader_investment_plan`、`market_report`、`sentiment_report`、`news_report`、`fundamentals_report`、`risk_debate_state` |
-| Portfolio Manager | `risk_debate_state`、`investment_plan`、`market_report`、`sentiment_report`、`news_report`、`fundamentals_report`、`company_of_interest` |
-
-> **注（Trader）**：Trader 的 LLM 调用不读取 `state["messages"]`（与辩论阶段一样绕过 messages，自行构造新 messages 列表传入 `llm.invoke`），但其返回值会写回 `state["messages"]`。上表约束的是**注入 LLM 的字段**，写回行为不受白名单限制，实现时无需特殊处理。
-
-> **注（Portfolio Manager）**：代码中 Portfolio Manager 读取的是 `state["investment_plan"]`（Research Manager 的输出），并非 Trader 的 `trader_investment_plan`。当前命名在代码里存在歧义（portfolio_manager.py 将其称为 `trader_plan`），表格如实反映现有代码行为。
-
-**待办**：实现 `AGENT_FIELD_PERMISSIONS` 字典并在节点入口添加字段提取逻辑。
+**优先级**：① > ② > ③（先防死循环并保证降级输出，再做下游保护）
 
 
 
 
-#### 4.2 上下文压缩(还需完善思考设计)
-提高能力，智能保留防止关键信息丢失
-##### 核心思路：上下文管理的七个生命周期决策（参考 OpenClaw 3.7 ContextEngine）
-   这些决策加在一起决定了整个系统的"智商上限"——不是模型的智商，是系统的智商。
-
-   | 钩子 | 时机 | 决策 |
-   |------|------|------|
-   | **bootstrap** | Agent 启动 | 加载什么初始信息 |
-   | **ingest** | 新消息进入 | 原样存储还是预处理/过滤关键部分 |
-   | **assemble**（最核心） | 调用模型时 | 从所有可用信息中选什么送入上下文窗口（100 条历史、20 个工具输出、5 个外部文档，窗口只够三分之一，选什么？） |
-   | **compact** | 上下文接近上限 | 压缩策略——摘要粒度、哪些信息不可丢弃 |
-   | **afterTurn** | 模型回复完成 | 哪些中间结果持久化到磁盘、哪些丢弃 |
-   | **prepareSubagentSpawn** | 子 Agent 启动 | 传递什么上下文给子 Agent |
-   | **onSubagentEnded** | 子 Agent 结束 | 如何回收成果到父 Agent 的上下文 |
-
-##### 压缩机制与风险
-   **触发条件（OpenClaw 方案）：**
-   - **溢出恢复**：模型返回上下文溢出错误时触发压缩并重试
-   - **阈值维护**：任务成功完成后，检测到 token 超过预留阈值时触发
-
-   **核心风险——关键指令丢失：**
-   - 典型案例：用户让 Agent 处理收件箱数千条消息，压缩后"在我说可以之前不要做任何事"的指令从摘要中消失，Agent 回到自主模式开始删除邮件，造成灾难性后果
-   - 策略因场景而异：编码 Agent 和邮件处理 Agent 的上下文管理策略完全不同，没有通用答案
-   - 因此 OpenClaw 3.7 将上下文管理变成可插拔接口（ContextEngine 插件槽位），LegacyContextEngine 包装器保留原有行为，新插件可获得全部控制权
-
-##### 参考案例：Lossless-Claw 插件
-   - **问题**：简单摘要压缩是有损的，可能丢失关键信息
-   - **方案**：激进压缩 + 保留指向原始数据的"无损指针"，原始消息始终保留在数据库中，摘要链接回源消息
-   - **工具**：`lcm_grep`（搜索）、`lcm_describe`（描述）、`lcm_expand`（展开恢复原始细节）
-   - **启示**：上下文管理策略可插件化，不改核心循环一行代码即可替换，让 Agent "过目不忘"
-
-##### 对 TradeHive 的启发
-   当前 `create_msg_delete()` 是简单清除消息防 token 溢出，可探索更智能的上下文保留/压缩机制
-
-
-
-### 5. prompt构造优化
+### 3. prompt优化
+#### ✔ 重复注入修改
 - 四份原始报告被所有后续 agent 无损重复注入（辩论每轮都重新拼入），无压缩无隔离：**辩论阶段报告重复注入优化**：当前辩手每轮调用都从 state 重新取四份完整报告拼入 prompt，报告内容不变却随轮次线性重复。改进思路：仅在辩论第一轮（`count == 0`）注入完整报告，后续轮次只追加辩论发言内容（`history`），减少冗余 token。默认1轮配置下影响有限，辩论轮数增大时收益显著。
 
+#### prompt配套修改
+目前的职能呢个：
 
-### 6. 保证数据流结构化输出
-#### 6a. 当前数据流（现状文档）
+Research Manager 的职能
+从 research_manager.py:25-43 看，它就是牛熊辩论的裁判：
 
-当前数据流：
-
-##### 全局只读字段（初始化写入，全程不变）
-
-| 字段 | 内容 | 读取者 |
-|------|------|--------|
-| `company_of_interest` | ticker 字符串（如 `"AAPL"`） | 分析师、Trader、Research Manager、Portfolio Manager |
-| `trade_date` | 交易日期字符串 | 仅四个分析师 |
-
----
-
-##### 阶段一：分析师 → 后续所有阶段
-
-四个分析师串行执行，各自写入一个报告字段；每个分析师完成后 Msg Clear 节点清除 `messages`，报告字段不受影响。
-
-| 字段 | 写入者 | 读取者 |
-|------|--------|--------|
-| `market_report` | Market Analyst | Bull/Bear、Research Manager、Trader、Aggressive/Conservative/Neutral、Portfolio Manager |
-| `sentiment_report` | Social Analyst | 同上 |
-| `news_report` | News Analyst | 同上 |
-| `fundamentals_report` | Fundamentals Analyst | 同上 |
-| `messages` | 分析师（tool call/result/报告）| 同一分析师内部循环；Msg Clear 节点清除 |
-
----
-
-##### 阶段二：投资辩论（Bull/Bear → Research Manager）
-
-通过 `investment_debate_state` 嵌套结构传递，完全绕过 `messages`：
-
-| 字段（父：`investment_debate_state`） | 写入者 | 读取者 | 说明 |
-|--------|--------|--------|------|
-| `investment_debate_state.history` | Bull/Bear 每轮追加 | Bull/Bear、Research Manager | 完整辩论上下文 |
-| `investment_debate_state.bull_history` / `bear_history` | Bull/Bear 各自追加 | 无实际消费者 | 冗余字段 |
-| `investment_debate_state.current_response` | Bull/Bear 各自覆写 | Bear 用于反驳 Bull；条件路由判断轮序 | Research Manager 最终也会覆写此字段（语义破坏，但辩论已结束不影响运行） |
-| `investment_debate_state.count` | Bull/Bear 每次 +1 | 条件路由截止判断 | 裁判不递增 |
-| `investment_debate_state.judge_decision` | Research Manager | 无下游消费者 | 冗余，实际决策通过 `investment_plan` 传递 |
-
----
-
-##### 阶段三：Research Manager → Trader / 风险辩论
-
-| 字段 | 写入者 | 读取者 |
-|------|--------|--------|
-| `investment_plan` | Research Manager | Trader、Portfolio Manager（Bug：Portfolio Manager 将此字段标注为 "Trader's proposed plan"，实为 Research Manager 输出） |
-
----
-
-##### 阶段四：Trader → 风险辩论
-
-| 字段 | 写入者 | 读取者 |
-|------|--------|--------|
-| `trader_investment_plan` | Trader | Aggressive / Conservative / Neutral 三个风险辩手（均读取此字段作为"trader_decision"注入 prompt） |
-| `messages` | Trader（写入 AIMessage） | 无下游消费者（冗余写入） |
-| `sender` | Trader（写入 `"Trader"`） | 无下游消费者（冗余写入） |
-
-注意：Portfolio Manager **不**读 `trader_investment_plan`，而是读 `investment_plan`（Research Manager 输出），是已知 Bug。
-
----
-
-##### 阶段五：风险辩论（Aggressive/Conservative/Neutral → Portfolio Manager）
-
-通过 `risk_debate_state` 嵌套结构传递，结构与投资辩论对称：
-
-| 字段（父：`risk_debate_state`） | 写入者 | 读取者 | 说明 |
-|--------|--------|--------|------|
-| `risk_debate_state.history` | 三方辩手各自追加 | 三方辩手、Portfolio Manager | 完整辩论上下文 |
-| `risk_debate_state.aggressive_history` / `conservative_history` / `neutral_history` | 各自追加 | 无实际消费者 | 冗余字段 |
-| `risk_debate_state.current_aggressive_response` / `current_conservative_response` / `current_neutral_response` | 各辩手覆写最新发言 | 其他两方辩手用于针对性反驳 | 三方互相读取对方最新发言 |
-| `risk_debate_state.latest_speaker` | 各辩手写自己名字 | 条件路由决定下一个发言者 | |
-| `risk_debate_state.count` | 三方辩手各 +1 | 条件路由截止判断 | 裁判不递增 |
-| `risk_debate_state.judge_decision` | Portfolio Manager | 无下游消费者 | 冗余，实际决策通过 `final_trade_decision` 传递 |
-
----
-
-##### 阶段六：Portfolio Manager → 最终输出
-
-| 字段 | 写入者 | 读取者 |
-|------|--------|--------|
-| `final_trade_decision` | Portfolio Manager | 图的最终输出，供外部调用者读取 |
-
----
-
-##### 信息流总览（单向漏斗）
-
-```
-初始化
-  └─ company_of_interest / trade_date（全程只读）
-
-分析师阶段（串行）
-  └─ market_report / sentiment_report / news_report / fundamentals_report
-        │
-        ├──→ Bull / Bear 辩论
-        │       └─ investment_debate_state.history
-        │               └─ Research Manager
-        │                       └─ investment_plan
-        │                               ├──→ Trader
-        │                               │       └─ trader_investment_plan
-        │                               │               └─ Aggressive/Conservative/Neutral 辩论
-        │                               │                       └─ risk_debate_state.history
-        │                               │                               └─ Portfolio Manager
-        │                               │                                       └─ final_trade_decision ✓
-        │                               │
-        │                               └──→ Portfolio Manager（Bug：误读为 trader_plan）
-        │
-        └──→ Trader / Research Manager / Portfolio Manager（四份报告直接注入）
-```
-
-#### 6.b 约束策略（还需修改）
+读取 Bull vs Bear 的完整辩论历史
+决定站哪边（Buy / Sell / Hold）
+给出一个投资计划传给 Trader
+两个 Manager 的对比
+Research Manager	Portfolio Manager
+位置	牛熊辩论之后	风险辩论之后
+裁决什么	Bull vs Bear → 要不要投	Aggressive vs Conservative vs Neutral → 怎么控风险
+输出给谁	Trader	最终输出（END）
+用的 LLM	deep_thinking_llm	deep_thinking_llm
 
 
 
 
-##### 方法分级（按可靠性从高到低）
-**Level 1：API 层强制约束（最可靠，优先实现）**
-- **Structured Output / JSON Schema 模式**：在 API 调用时直接传入 JSON Schema，模型在 token 生成层面被约束，无法输出不符合 schema 的结构。Anthropic / OpenAI 均支持。
-- **Tool calling 作为输出载体**：把期望的输出结构定义为一个 tool，让模型"调用"该 tool 来返回结果。本质是语法层面的约束，比 prompt 指令强得多。
 
-**Level 2：库层约束**
-- **`instructor` 库**：封装 LLM 调用 + Pydantic 验证 + 自动重试，失败时自动把校验错误 feedback 回模型重试。三行代码让任意 LLM 输出 Pydantic model，TradeHive 里最实用。
-- **LangChain `with_structured_output()`**：已内置，底层是 tool calling 或 JSON mode，可直接使用。
 
-**Level 3：Prompt 层约束（可靠性最低，作为兜底辅助）**
-- **Few-shot**：在 prompt 中提供 2-3 个格式示例，对复杂嵌套结构有辅助作用。
-- **格式指令**：明确写"仅输出有效 JSON，不加 markdown，不加解释"。
-- **兜底验证节点**：解析输出，失败则将错误 feedback 回模型重试（可建为单独的 LangGraph 节点）。
+看具体代码。以 Trader 为例（trader.py:18-19）：
 
-##### 原有三个举措的重新定位
 
-| 举措 | 必要性 | 定位调整 |
-|------|--------|----------|
-| 提示词 few-shot | 中 | 降级为 Level 3 辅助，不作为主要依赖 |
-| tool 硬限制 | **高** | 升级为 Level 1 优先实现（structured output / tool calling） |
-| 兜底验证 | 中高 | 保留，但仅守 `final_trade_decision` 终点，其他节点失败影响有限 |
+curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
+past_memories = memory.get_memories(curr_situation, n_matches=2)
+四份报告被拼成一个字符串，传给 memory.get_memories() 做语义相似度匹配，找出过往类似市场状况下的经验教训。找到后，这些记忆（past_memory_str）才被放进 prompt。
 
-注意：使用 structured output 时需评估是否限制模型自由度（如报告类输出不宜过度约束格式，决策类输出才需硬限制）。
+但四份报告本身没有放进 Trader 的 prompt。 Trader 的 prompt 里只有：
+
+investment_plan（Research Manager 的裁决）
+past_memory_str（记忆系统返回的历史教训）
+同理，Research Manager、Portfolio Manager 也是一样的模式——读报告只为查记忆，prompt 里不包含报告原文。
+
+实际上谁真正读了报告原文
+节点	报告放进 prompt 了吗
+Bull/Bear Researcher	是，四份报告全文放进 prompt
+Risk Debators (3个)	是，四份报告全文放进 prompt
+Research Manager	否，只用于查记忆
+Trader	否，只用于查记忆
+Portfolio Manager	否，只用于查记忆
+所以分析师报告只被辩论者直接使用。Research Manager、Trader、Portfolio Manager 这三个决策节点反而看不到报告原文，只能通过辩论历史间接获取信息。这其实是一个设计上可以改进的点——决策者本应该能直接看到一手数据。
+
+
+
+
+
+
+trader可以基本维持目前的内容不变
+
+风险辩论给出仓位规划，交易策略
+
+portfolio职能：
+综合裁决：Trader 说"在 88 块买入 NVDA，止损 82，目标 100"，但三个风险分析师对仓位有分歧（激进要 10%，保守要 2%，中立要 5%）——Portfolio Manager 拍板最终用多少仓位
+
+冲突调解：如果 Trader 说 BUY 但保守派认为风险太大建议 HOLD，Portfolio Manager 做最终的 go/no-go 决定
+
+输出结构化交易指令：把 Trader 的买卖点 + Risk Debators 的仓位规划，整合成回测系统能解析的标准 JSON 格式
+
+### 4. 保证数据流结构化输出
+#### 4.a 当前数据流（现状文档）
+
+#### 4.b 约束策略
+
+是按照目前的填槽位的方式更好，还是结构化输出更好
+
+
+
+我的判断：哪些 非常有必要 加结构化输出
+优先级 1（必须加）：
+
+Portfolio Manager — 这是最终决策输出，直接决定交易信号。当前虽然 prompt 要求了 Rating / Executive Summary / Investment Thesis 三段结构，但完全靠 LLM 自觉。问题在于：
+
+process_signal() 需要从中提取 Buy/Hold/Sell 信号，如果格式不对会解析失败
+这是面向用户和下游回测的最终产物，格式不稳定直接影响可用性
+应该用 structured output 强制返回：rating（枚举值）、executive_summary、investment_thesis、risk_levels、position_sizing 等字段
+Trader — 仅要求结尾写 FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**，但 LLM 有时会写成别的格式（如 BUY 不加粗、漏掉前缀等）。应该至少强制提取出一个明确的 signal 枚举字段。
+
+优先级 2（建议加）：
+
+4 个 Analysts（Market / News / Social Media / Fundamentals）— 它们的报告会被后续所有 Agent 作为输入。如果格式混乱，后续 Agent 收到的上下文质量不稳定，影响整个链路。建议至少结构化为：summary（摘要）、key_findings（列表）、recommendation（倾向）、evidence_table（关键数据表）。
+
+优先级 3（可以不加）：
+
+Bull/Bear Researcher、3 个 Risk Debator、Research Manager — 这些是中间辩论环节，本质上就是自由文本讨论，格式化反而可能限制辩论的深度和灵活性。辩论内容不直接面向用户，而是作为上下文传给 Judge 和 Portfolio Manager，保持自由文本是合理的。
+
+
+##### 三层保障策略
+
+结构化输出只需三步即可保证，无需过度分级：
+
+**第一层：虚拟工具（从输出来源限制）**
+- 把期望的输出结构定义为虚拟 tool（tool calling），模型被引导以 tool call 形式返回结构化数据，格式可靠性远高于纯 prompt 指令
+- 注意：虚拟工具 ≠ 约束解码。约束解码（constrained decoding）是在 token 采样层用 JSON Schema/正则硬约束生成，需 API 显式支持（如 OpenAI `response_format: json_schema`）或本地推理框架（Outlines、vLLM）。TradeHive 目前走 API 调用，使用的是虚拟工具而非约束解码
+- LangChain `with_structured_output()` 底层即是 tool calling / JSON mode，可直接使用
+
+**第二层：Pydantic 校验（检查格式 + 语义）**
+- 为关键字段定义 Pydantic schema，校验字段类型、取值范围、业务语义
+- 结合 `instructor` 库可实现：校验失败 → 将错误 feedback 回模型 → 自动重试
+- 这层的价值不仅是格式检查，更是**语义约束**（如 action 只能是 buy/sell/hold，confidence 在 0-1 之间）
+
+**第三层：兜底重试（仅守终点）**
+- 仅针对 `final_trade_decision` 设置兜底验证节点（可建为 LangGraph 节点）
+- 覆盖两类失败，策略不同：
+  - **格式/校验失败**：将 ValidationError 信息 feedback 回模型重新生成
+  - **调用失败**（网络超时、rate limit、5xx 等）：直接重试相同请求，指数退避，最多 3 次
+- 其他中间节点无需兜底，前两层已足够
 
 ##### TradeHive 实施优先级
 
 ```
-1. 用 structured output / tool calling 约束关键决策节点输出
+1. 关键决策节点接入 tool calling 约束输出
    优先节点：Research Manager → investment_plan
              Portfolio Manager → final_trade_decision
 
-2. 为关键字段定义 Pydantic schema，接入 instructor 或 with_structured_output()
+2. 定义 Pydantic schema，接入 instructor 或 with_structured_output()
 
-3. 兜底验证只针对 final_trade_decision（终点最重要）
-
-4. few-shot 作为 prompt 辅助，不作为主要依赖
+3. final_trade_decision 加兜底节点（校验失败 feedback 重试 + 调用失败指数退避最多 3 次）
 ```
 
-### 7. 选便宜又强的模型跑 baseline （后续确认对比细节运行）
-
-### 8. 单 agent 设计，跑单 agent baseline 
+注意：报告类输出（分析师报告等）不宜过度约束格式，仅决策类输出需硬限制。
 
 
+### 5. 对多 agent 策略结果进行金融回测与评估
+
+**设计方案（Spec）：**
+
+**评估指标：** CAGR = `(final/initial)^(252/n)-1`；夏普比率 = `(CAGR-0.05)/vol`；最大回撤 = `max(1-value/rolling_max)`；波动率 = `std(daily_returns)*sqrt(252)`
+
+**对比基准：** Buy-and-Hold / 单 Agent Bot（无辩论）/ 传统量化策略（动量或RSI）
+
+✅ 及格的鲁棒性
+至少做到：
+
+多时间段：
+bull / bear / sideways
+多资产：
+不同股票 or ETF
+多指标：
+return
+sharpe ratio
+max drawdown
+
+✅✅ 比较好的鲁棒性（推荐你做到这个）
+再加：
+
+train / test 分离（避免overfitting）
+不同参数 sensitivity：
+比如 risk threshold 改一下会不会崩
+baseline 对比：
+buy & hold
+simple MA strategy
+
+✅✅✅ 很强（能拿高分）
+walk-forward testing（滚动窗口）
+不同市场：
+US vs crypto vs emerging
+stress test：
+极端行情（如 crash）
+transaction cost / slippage
 
 
-### 目前的上下文管理策略：
+### 6. 长期记忆实现
+#### 6.1 新增持久化记忆存储（Qdrant 方案）
 
----
+**原始限制 → 改进方向**：
+- ~~`FinancialSituationMemory` 只在内存中存储，进程重启后归零，无磁盘持久化~~ → **Qdrant 本地文件持久化，重启后自动加载**
+- ~~BM25 是词频匹配，无法捕捉语义关联（如"利率攀升"和"加息周期"）~~ → **Qdrant 原生 Dense + Sparse 双路混合检索，RRF 融合**
 
-#### A. 主状态结构（LangGraph `MessagesState`）
 
-[agent_states.py](tradingagents/agents/utils/agent_states.py) 使用 TypedDict 扩展 LangGraph 的 `MessagesState`，将各阶段产物（分析报告、辩论历史）存为独立具名字段，而非全堆入 `messages` 列表。核心字段：
-- `company_of_interest`（`str`）：目标股票 ticker
-- `trade_date`（`str`）：交易日期
-- `sender`（`str`）：发送消息的 agent 名称（仅 Trader 写入，实际无下游消费者）
-- `market_report` / `sentiment_report` / `news_report` / `fundamentals_report`：各分析师输出
-- `investment_debate_state`（`InvestDebateState`）：Bull/Bear 辩论状态，含 `bull_history`、`bear_history`、`history`、`current_response`、`judge_decision`、`count`
-- `risk_debate_state`（`RiskDebateState`）：风险辩论状态，含 `aggressive_history`、`conservative_history`、`neutral_history`、`history`、`latest_speaker`、`current_aggressive_response`、`current_conservative_response`、`current_neutral_response`、`judge_decision`、`count`
-- `investment_plan`、`trader_investment_plan`、`final_trade_decision`：各决策阶段输出
-
-初始状态由 [propagation.py](tradingagents/graph/propagation.py) 的 `create_initial_state()` 构建：`messages` 初始化为 `[("human", company_name)]`，所有报告字段为空字符串，两个 debate state 的 `count` 初始化为 0、所有历史字段初始化为空字符串。`sender`、`investment_plan`、`trader_investment_plan`、`final_trade_decision` 四个字段**不在**初始状态中，由各 agent 在运行时首次写入；图拓扑保证写入先于读取。
-
----
-
-#### B. 各阶段上下文策略
-
-##### B1. 分析师阶段：messages 内部累积 + 阶段间统一清除
-
-分析师（market/social/news/fundamentals）使用 `ChatPromptTemplate` + `MessagesPlaceholder`，读取完整 `state["messages"]`，同时读取 `state["trade_date"]` 作为当前日期注入 prompt、通过 `build_instrument_context(state["company_of_interest"])` 注入 ticker 身份。四个分析师共享同一个"协作助手"模板外壳（含 `FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**` 前缀指令），仅 `system_message`（领域 prompt）和绑定工具不同。
-
-- **节点内部**：工具调用循环期间，tool call 与 tool result 在 messages 里逐轮累积，让 LLM 知道已取了哪些数据
-- **节点之间**：分析师输出最终报告（无 tool_calls）后，`Msg Clear` 节点用 `RemoveMessage` 删掉所有消息，仅保留占位符 `HumanMessage("Continue")`，防止多个分析师的消息叠加撑爆上下文窗口
-- **执行顺序**：按 `selected_analysts` 列表顺序严格串行（默认 market → social → news → fundamentals），每个分析师的 Msg Clear 连接到下一个，最后一个连接到 Bull Researcher
-- **轮次控制**：工具调用循环**没有硬性轮次限制**，完全依赖 LLM 自主判断何时停止（不输出 tool_calls 则结束）。唯一保护是全局 `recursion_limit=100`，若 LLM 持续调用工具会触发递归上限报错而非优雅截止
-
-##### B2. 辩论阶段：双层上下文结构，完全绕过 messages
-
-Bull/Bear 辩论和风险评估辩论完全绕过 `state["messages"]`（不读也不写），通过字符串字段手动管理，形成两层结构：
-- **全量历史层**（`history`）：每轮发言追加拼接，注入 LLM 获得完整辩论上下文
-- **最新一轮层**（`current_response` / `current_aggressive_response` 等）：只保存各方最新一轮发言，注入 LLM 用于定向反驳，路由逻辑也依赖此字段（`current_response.startswith("Bull")` 决定下一个发言者；`latest_speaker` 决定风险辩论轮序）
-
-这种双层设计使 LLM 既能看到完整辩论脉络，又能精确聚焦到需要反驳的对手最新观点。
-
-**轮次控制**（[conditional_logic.py](tradingagents/graph/conditional_logic.py)）：通过 `count` 计数器强制截止——
-- 投资辩论：默认最多 1 轮（2 次发言，Bull → Bear → Research Manager），截止条件 `count >= 2 * max_debate_rounds`
-- 风险讨论：默认最多 1 轮（3 次发言，3 个角色各一次 → Portfolio Manager），截止条件 `count >= 3 * max_risk_discuss_rounds`
-- `count` 递增语义：辩论双方/三方每次发言 `count += 1`，裁判不递增，count 只统计辩论发言次数
-
-##### B3. Trader / Manager：绕过 messages，手动构建 prompt
-
-这三个 agent 构建 prompt 时完全不读 `state["messages"]`，只从 state 具名字段（报告、辩论历史、memory）取内容，上下文窗口精确可控。
-- **Trader**：读 `investment_plan`（Research Manager 输出），写回 `messages` 和 `sender`（实际无下游消费者，属无效写入）。调用方式不对称：Trader 是唯一使用 message list（system/user role 分离）调用 LLM 的 agent，其余非分析师 agent 都使用 `llm.invoke(prompt_string)` 直接传字符串。Trader 也是唯一显式处理空记忆的 agent（`if past_memories:` + fallback），其余 agent 空记忆时 `past_memory_str` 为空字符串
-- **Research Manager**：不读/写 messages；输出双写到 `investment_debate_state.judge_decision` 和 `investment_plan`。同时将 `current_response` 覆写为裁判决策文本——虽然辩论已结束不影响路由，但破坏了 `current_response` 的语义一致性
-- **Portfolio Manager**：不读/写 messages；读取 `state["investment_plan"]`（Research Manager 的输出）并命名为 `trader_plan`，标注为 "Trader's proposed plan"——实际从未读取 `state["trader_investment_plan"]`（真正的 Trader 输出），是一处设计 bug
-
----
-
-#### C. 跨切面机制
-
-##### C1. 两档 LLM 分层处理
-
-[trading_graph.py](tradingagents/graph/trading_graph.py) 初始化两个 LLM 实例：
-- **`deep_thinking_llm`**（高推理强度）：仅分配给 Research Manager 和 Portfolio Manager 两个终审裁判节点，它们接收已经压缩过的辩论历史 `history`，需要从中提炼最终决策
-- **`quick_thinking_llm`**（次级推理）：其余所有 agent（四个分析师、Bull/Bear、风险三方辩手、Trader），以及 Reflection 反思阶段
-
-体现"推理三明治"思路：在上下文被充分蒸馏后，才动用高推理强度模型做最终判断。
-
-##### C2. 跨运行长期记忆（BM25 检索）
-
-[memory.py](tradingagents/agents/utils/memory.py) 用 **BM25** 算法存储"过去情境 → 建议"对，不调 API。每次运行取 top-2 相似记忆，但注入 prompt 时**只传 `recommendation`（反思教训文本），丢弃 `matched_situation`（原始情境描述）**，LLM 无法看到匹配的原始情境是什么，只看到结论建议。
-
-**存储结构**：每条记忆是 `(situation, recommendation)` 键值对，分别存入两个 Python list（`documents` + `recommendations`），BM25 索引基于 `documents` 构建，每次写入后重建索引。
-
-**五个独立记忆池及各自反思内容**：
-
-| 记忆池 | 反思时读取的决策内容 | 注入的 agent |
-|--------|--------------------|----|
-| `bull_memory` | `investment_debate_state.bull_history`（Bull 全部发言） | Bull Researcher |
-| `bear_memory` | `investment_debate_state.bear_history` | Bear Researcher |
-| `trader_memory` | `trader_investment_plan` | Trader |
-| `invest_judge_memory` | `investment_debate_state.judge_decision` | Research Manager |
-| `portfolio_manager_memory` | `risk_debate_state.judge_decision` | Portfolio Manager |
-
-**写入机制**：运行结束、得知真实收益后，由 [reflection.py](tradingagents/graph/reflection.py) 的 `Reflector` 统一触发。对每个 agent，将其决策内容 + 四份报告 + 真实收益传给 `quick_thinking_llm` 生成反思文本，再调 `memory.add_situations([(situation, reflection_text)])` 写入。五个记忆池写入的 `situation`（检索键）**完全相同**，均为四份报告拼接；差异仅在 `recommendation`（各自视角的反思教训）。
-
-**取用机制**：agent 被调用时，用当前四份报告拼成 `curr_situation`，调 `get_memories(curr_situation, n_matches=2)` 做 BM25 匹配，只取返回结果的 `recommendation` 字段拼入 prompt，`matched_situation` 被丢弃。
-
-**BM25 检索原理**：`_tokenize()` 对全文做小写 + 正则提取所有字母数字词，不做停用词过滤，所有词全部送入 BM25。BM25 通过 TF-IDF 思路自动分配权重：
-- **TF（词频）**：词在当前文档中出现越多权重越高，但有上限防止堆词刷分
-- **IDF（逆文档频率）**：词在所有历史记录中越罕见权重越高；在每条记录都出现的通用词（如 "market"、"report"）权重接近零
-
-实际起决定作用的是**在当前报告中高频、但在历史记录库中罕见**的词（如特定股票代码、特定经济事件名称）。记忆库条目越多，IDF 区分度越好；条目极少时退化为纯词频匹配。
+Query改写：
 
 
 
-记忆匹配上下文：所有使用记忆的 agent 构建 `curr_situation` 时只拼接四份报告，**不包含** `investment_plan` 或 `trader_investment_plan`。检索完全基于市场情境，不考虑决策内容。由于五个记忆池的检索键相同，不同立场的 agent 在相同市场环境下会命中相同的历史情境条目，差异只在各自存储的反思视角。
+**技术选型：Qdrant**
 
-**冷启动策略（待实现）**：记忆库为空时 BM25/向量检索均无从匹配，IDF 效果在条目极少时也会退化。建议新增配置参数 `memory_warmup_runs`，达到阈值前禁用记忆读取但仍写入，积累足量历史条目后再开启注入，避免早期噪声记忆干扰决策。
+**Qdrant 核心优势**：
 
-##### C3. Ticker 身份注入与日期注入
+| 优势 | 说明 |
+|------|------|
+| **原生混合检索** | 同一 collection 内同时存储 Dense + Sparse 向量，内置 RRF（Reciprocal Rank Fusion）融合排序，一次 `query_points` 调用完成词汇匹配 + 语义匹配，无需外挂 BM25 库或手动融合逻辑 |
+| **零部署本地持久化** | `QdrantClient(path="./qdrant_data")` 纯文件模式，无需 Docker、无需后台服务进程，`pip install` 即用，适合本项目的单机回测场景 |
+| **检索阶段内过滤** | Payload filtering 在 HNSW 索引遍历时执行（pre-filtering），而非先召回再过滤（post-filtering）。按 ticker/日期范围筛选时不浪费召回名额，小数据集下尤为关键 |
+| **原生 Sparse Vector** | 一等公民支持 `SparseVector` 类型，可直接存储 BM25 权重或 SPLADE 稀疏表示，与 Dense 向量共存于同一 point，无需维护两套索引 |
+| **Python SDK 简洁** | API 设计一致，与本项目 Python + LangGraph 技术栈契合度高；相比 Weaviate 的 GraphQL 风格，集成代码量更少 |
+| **量化压缩** | 支持 Scalar / Binary / Product Quantization，记忆量增长后可压缩向量降低内存占用，无需迁移存储引擎 |
 
-- **Ticker 注入**：[agent_utils.py](tradingagents/agents/utils/agent_utils.py) 的 `build_instrument_context()` 注入固定文本，要求保留交易所后缀（如 `.TO`、`.HK`）。**覆盖范围**：四个分析师、Trader、Research Manager、Portfolio Manager。Bull/Bear 研究员和风险三方辩手**没有**此注入。
-- **日期注入**：`state["trade_date"]` **仅被四个分析师读取**并作为 `{current_date}` 注入 prompt，其余所有 agent **均不读取** `trade_date`，只能通过分析师报告内容间接获知日期信息。
+**升级方案**：
 
-##### C4. Reasoning token 过滤（防污染）
+记忆系统升级为 **Qdrant 混合检索 + 本地文件持久化**：
+- **Dense 向量**：`all-MiniLM-L6-v2`（或 `bge-small-en`）编码语义，捕捉"利率攀升" ≈ "加息周期"等同义关联
+- **Sparse 向量**：BM25/SPLADE 编码词汇特征，保留精确术语匹配能力（如 ticker 名、具体指标名）
+- **RRF 融合**：Qdrant 内置 `Fusion.RRF`，一次 `query_points` 调用完成双路检索 + 排序融合
+- **Payload 过滤**：存储 `ticker`、`trade_date`、`market_type` 等元数据，检索时可约束范围
+- **持久化**：`QdrantClient(path="./qdrant_data")`，纯本地文件存储，进程重启后数据不丢失
+- **冷启动保护**：保留 `memory_warmup_runs` 策略，积累到阈值后开放查询
 
-[base_client.py](tradingagents/llm_clients/base_client.py) 的 `normalize_content()` 在所有 LLM 响应返回前，将 `[{type: "reasoning",...}, {type: "text",...}]` 列表结构转成纯字符串，丢弃 reasoning blocks，防止 thinking tokens 污染下游 agent 的上下文。
+**接口兼容**：`FinancialSituationMemory` 的 `add_situations()` / `get_memories()` 接口保持不变，底层替换为 Qdrant 实现，上层 agent 代码无需修改。
 
-##### C5. 兜底保护
+**Qdrant 混合检索调用示意**：
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Prefetch, FusionQuery, Fusion,
+    Filter, FieldCondition, MatchValue,
+    SparseVector,
+)
 
-- LangGraph `recursion_limit=100`：防止图中出现无限循环
-- 分析师可动态选择（`selected_analysts` 参数），不需要的分析师节点不加入图，减少无效上下文传播
+client = QdrantClient(path="./qdrant_data")
 
----
+results = client.query_points(
+    collection_name="financial_memory",
+    prefetch=[
+        Prefetch(query=dense_embedding, using="dense", limit=20),
+        Prefetch(query=SparseVector(indices=sparse_ids, values=sparse_vals),
+                 using="sparse", limit=20),
+    ],
+    query=FusionQuery(fusion=Fusion.RRF),
+    query_filter=Filter(must=[
+        FieldCondition(key="ticker", match=MatchValue(value="NVDA"))
+    ]),
+    limit=5,
+)
+```
 
-#### D. 已知设计问题与不对称
+cross-endcoder重排
 
-| 类别 | 问题 | 说明 |
+
+
+#### 6.2 部分记忆机制重构
+记忆功能冷启动策略，设置合理轮数不使用长期记忆，积累到一定阈值后开放查
+
+
+版本	          训练期（12个月）	验证期（3个月）
+Multi-agent 改进版	 积累记忆	    只读，跑验证
+Single-agent 改进版  积累记忆	    只读，跑验证
+Baseline（未改动）	 积累记忆	    只读，跑验证
+
+### 有余力再做：滚动前向验证（Roll-forward Validation）
+
+优化滚动窗口以降低过拟合，验证持久化记忆的泛化价值。
+
+**设计方案（Spec）：**
+
+**目标**：前向验证（Walk-forward Testing）避免未来数据泄漏（Look-ahead Bias），并评估 Agent 记忆积累在未见市场环境中的有效性。
+
+**验证流程（训练窗口 = 12个月，验证窗口 = 3个月，步长 = 3个月）：**
+训练期内 agent 是可读可写的——它在训练期的每个交易日做决策时，可以读取之前交易日积累的记忆，也可以写入新的记忆。
+限制只在验证期：只读不写，防止验证期的经验反向影响评估。
+
+
+| 窗口 | 训练窗口 (In-sample) | 验证窗口 (Out-of-sample) | 记忆状态 |
+|---|---|---|---|
+| W1 | 2022-10-01 ~ 2023-09-30 | 2023-10-01 ~ 2023-12-31 | 隔离，从空开始 |
+| W2 | 2023-01-01 ~ 2023-12-31 | 2024-01-01 ~ 2024-03-31 | 隔离，从空开始 |
+| W3 | 2023-04-01 ~ 2024-03-31 | 2024-04-01 ~ 2024-06-30 | 隔离，从空开始 |
+| W4 | 2023-07-01 ~ 2024-06-30 | 2024-07-01 ~ 2024-09-30 | 隔离，从空开始 |
+| W5 | 2023-10-01 ~ 2024-09-30 | 2024-10-01 ~ 2024-12-31 | 隔离，从空开始 |
+| W6 | 2024-01-01 ~ 2024-12-31 | 2025-01-01 ~ 2025-03-31 | 隔离，从空开始 |
+
+**记忆消融对照实验（Ablation）：**
+
+每个验证窗口跑两个版本，验证记忆机制的真实价值：
+
+| 版本 | 训练期 | 验证期 | 目的 |
+|---|---|---|---|
+| A：有记忆 | Agent 积累记忆 | 只读记忆 | 完整策略表现 |
+| B：无记忆 | 跳过 | 空白记忆直接跑 | 基线对照 |
+
+若版本 A 未能在多数窗口一致性地优于版本 B，说明记忆机制积累的是噪声而非泛化经验。
+
+**防泄漏控制：**
+- **数据源隔离**：yfinance / CoinGecko 按日期查询天然不泄漏；VADER 用 `lookback_days` 控制窗口；FRED 使用 `realtime_start` 参数
+- **记忆窗口间隔离**：每个窗口使用独立的 memory store（按窗口 ID 分 namespace），跑完后归档，禁止跨窗口读取
+- **验证期只读强制**：memory store 在验证期设置 `read_only=True` 开关，代码层面禁止写入，而非仅靠约定
+
+
+
+### 有余力再做：6. 多资产组合设计
+
+> **开发策略**：多资产组合作为**独立分支**（`feature/multi-asset-portfolio`）开发，不在 main 上直接改动。核心原则是**不改变图内部逻辑**——每个 ticker 独立走完整的单资产图，由图外部的调度层和 Portfolio 模块完成多资产聚合与仓位分配。
+>
+> **原因**：当前每个 Analyst 的 prompt 已包含大量单资产数据（行情、新闻、基本面），如果在图内部将多个 ticker 的信息拼接进 Analyst 上下文，token 数会线性增长，极易超出模型上下文窗口或严重降低分析质量。
+
+#### 6.1 现状问题
+
+当前系统是**单资产单次运行**：`propagate("NVDA", date)` 只分析一个标的，Portfolio Manager 输出决策时不知道组合中还有哪些资产、各自仓位多少、现金剩余多少。这导致：
+
+- 无法做跨资产仓位分配（如"NVDA 已占 20%，BTC 不宜再加重"）
+- 无法控制组合整体风险敞口（如"股票+加密总仓位不超过 80%"）
+- 回测只能单资产独立跑，无法评估组合层面绩效
+
+#### 6.2 设计目标
+
+1. 每个决策周期内**逐个标的独立分析**，再由外部组合层**聚合为统一的组合交易计划**
+2. 组合决策层能看到**当前持仓状态**（各资产仓位、现金、总市值）
+3. **不改变图内部逻辑**——图仍然是单 ticker 输入、单 ticker 输出，Analyst/辩论/决策流程不变
+4. 持仓系统**独立于图**，图只负责单资产分析和决策，不维护资金状态
+5. 与现有回测设计（`回测逻辑设计.md`）兼容，升级为多资产版本
+
+#### 6.3 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      回测循环 / 调度层                            │
+│  for date in trading_dates:                                     │
+│    portfolio_context = portfolio.get_summary()                   │
+│    decisions = {}                                                │
+│    for ticker in tickers:                                        │
+│      decisions[ticker] = graph.propagate(ticker, date)  # 图不变 │
+│    trade_plan = allocator.aggregate(decisions, portfolio_context) │
+│    portfolio.execute_signals(trade_plan, date, prices)           │
+└────────┬──────────────┬───────────────────┬─────────────────────┘
+         │              │                   │
+         ▼              ▼                   ▼
+┌────────────────┐ ┌─────────────────┐ ┌──────────────────────────┐
+│ TradingAgents  │ │ PortfolioAlloc  │ │ Portfolio (持仓模块)      │
+│ Graph (不改动) │ │ (组合分配层)     │ │ (持仓 + 资金 + 交易记录)  │
+│                │ │                 │ │                          │
+│ 输入: ticker   │ │ 输入: 各ticker  │ │ - 维护现金和各资产持仓     │
+│       date     │ │   的单资产决策   │ │ - 接收信号执行模拟交易     │
+│ 输出: 单资产   │ │   + 持仓上下文   │ │ - 记录交易历史和每日快照   │
+│   交易决策     │ │ 输出: 组合交易   │ │ - 计算绩效指标            │
+│                │ │   计划           │ │                          │
+└────────────────┘ └─────────────────┘ └──────────────────────────┘
+```
+
+**关键原则**：
+
+- **图不变**：`TradingAgentsGraph` 保持单 ticker 输入输出，内部 State、Analyst、辩论逻辑完全不动
+- **外层循环**：调度层逐 ticker 调用图，收集各自的单资产决策
+- **组合分配层**（`PortfolioAllocator`）：汇总所有单资产决策 + 当前持仓上下文，产出组合级交易计划
+- **单向依赖**：图不感知持仓系统，持仓系统只接收组合分配层的输出
+
+#### 6.4 图外组合分配层
+
+图内部不做任何改造。多资产的聚合和仓位分配由**图外部的 `PortfolioAllocator`** 完成：
+
+```
+调度层逐 ticker 调用图（图内部逻辑不变）
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  各 ticker 的单资产决策（图的原始输出）                │
+│  { "NVDA": {action: "BUY", confidence: 0.8, ...},   │
+│    "BTC":  {action: "HOLD", confidence: 0.5, ...},   │
+│    "AAPL": {action: "SELL", confidence: 0.7, ...} }  │
+└──────────────────────┬──────────────────────────────┘
+                       │ + portfolio_context（当前持仓摘要）
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│  PortfolioAllocator（组合分配层，图外部独立模块）      │
+│                                                     │
+│  职责：                                              │
+│  - 综合各 ticker 的单资产决策和置信度                  │
+│  - 结合当前持仓状态，做跨资产仓位分配                  │
+│  - 控制组合整体风险敞口                               │
+│  - 输出结构化的组合交易计划                            │
+└──────────────────────┬──────────────────────────────┘
+                       ▼
+              组合交易计划（见 6.7）
+```
+
+**实现方式**：`PortfolioAllocator` 可以是基于规则的（按 confidence 加权分配），也可以用 LLM 做组合级决策（将所有单资产决策摘要 + 持仓上下文作为 prompt），但这都发生在图外部，不影响图的运行。
+
+#### 6.5 Portfolio 持仓模块
+
+**文件位置**：`tradingagents/portfolio/`，与 `graph/` 平级。
+
+```
+tradingagents/
+├── portfolio/
+│   ├── __init__.py
+│   ├── models.py          # Position, Trade, Snapshot 数据结构
+│   ├── portfolio.py       # Portfolio 核心类
+│   └── signal_mapper.py   # 信号 → 目标仓位比例的翻译规则
+```
+
+**数据结构**：
+
+```python
+@dataclass
+class Position:
+    ticker: str
+    quantity: float            # 持有数量
+    avg_cost: float            # 平均成本价
+    current_price: float       # 当前市价
+    
+    @property
+    def market_value(self) -> float:
+        return self.quantity * self.current_price
+    
+    @property
+    def unrealized_pnl(self) -> float:
+        return (self.current_price - self.avg_cost) * self.quantity
+
+@dataclass
+class Trade:
+    ticker: str
+    date: str
+    action: str                # BUY / SELL
+    quantity: float
+    price: float
+    commission: float
+    signal: str                # 原始信号
+    reason: str                # 决策摘要（可选）
+
+@dataclass
+class Snapshot:
+    date: str
+    cash: float
+    positions: Dict[str, Position]
+    total_equity: float        # cash + sum(market_value)
+```
+
+**Portfolio 核心接口**：
+
+```python
+class Portfolio:
+    def __init__(self, initial_cash: float = 100_000, commission_rate: float = 0.001):
+        self.cash = initial_cash
+        self.initial_cash = initial_cash
+        self.positions: Dict[str, Position] = {}
+        self.trades: List[Trade] = []
+        self.snapshots: List[Snapshot] = []
+
+    # ── 供调度层调用 ──
+
+    def get_summary(self) -> str:
+        """生成持仓摘要文本，注入图的 portfolio_context 字段"""
+        # 输出示例：
+        # Portfolio Status:
+        #   Cash: $45,000 (45.0%)
+        #   NVDA: 100 shares @ $850 = $85,000 (42.5%) | avg_cost: $780 | PnL: +$7,000
+        #   BTC-USD: 0.5 units @ $65,000 = $32,500 (16.3%) | avg_cost: $60,000 | PnL: +$2,500
+        #   Total Equity: $200,000
+        #   Available for new positions: $45,000
+
+    def execute_signals(self, trade_plan: dict, date: str, prices: Dict[str, float]):
+        """接收组合交易计划，逐个 ticker 执行"""
+        # trade_plan 结构见 6.7
+
+    def update_prices(self, prices: Dict[str, float], date: str):
+        """每日更新市价，记录快照"""
+
+    def get_returns(self, ticker: str = None) -> float:
+        """单资产或组合整体收益"""
+
+    def get_performance_metrics(self) -> Dict:
+        """CAGR、夏普、最大回撤、波动率"""
+```
+
+#### 6.7 组合级结构化输出
+
+`PortfolioAllocator` 汇总各 ticker 的单资产决策后，输出**组合交易计划**：
+
+```json
+{
+  "date": "2024-05-10",
+  "portfolio_rating": "RISK_ON",
+  "total_target_invested_pct": 0.75,
+  "cash_reserve_pct": 0.25,
+  "positions": [
+    {
+      "ticker": "NVDA",
+      "rating": "BUY",
+      "target_position_pct": 0.30,
+      "entry_plan": [
+        {"phase": "A", "action": "BUY", "allocation_pct": 1.0, "trigger": "IMMEDIATE", "limit_price": null}
+      ],
+      "stop_loss": 780.00,
+      "take_profit": 950.00,
+      "time_horizon_days": 30
+    },
+    {
+      "ticker": "BTC-USD",
+      "rating": "OVERWEIGHT",
+      "target_position_pct": 0.20,
+      "entry_plan": [
+        {"phase": "A", "action": "BUY", "allocation_pct": 0.5, "trigger": "IMMEDIATE", "limit_price": null},
+        {"phase": "B", "action": "BUY", "allocation_pct": 0.5, "trigger": "PRICE_BELOW", "limit_price": 62000}
+      ],
+      "stop_loss": 58000,
+      "take_profit": 75000,
+      "time_horizon_days": 14
+    },
+    {
+      "ticker": "AAPL",
+      "rating": "HOLD",
+      "target_position_pct": 0.25,
+      "entry_plan": [],
+      "stop_loss": null,
+      "take_profit": null,
+      "time_horizon_days": null
+    }
+  ]
+}
+```
+
+**约束**：`sum(target_position_pct) + cash_reserve_pct = 1.0`，由校验层检查，超出则按比例缩放。
+
+#### 6.8 回测循环升级
+
+从单资产循环升级为组合循环。**图的调用方式不变**（仍然是 `propagate(ticker, date)`），多资产通过外层循环实现：
+
+```python
+from tradingagents.portfolio.portfolio import Portfolio
+from tradingagents.portfolio.allocator import PortfolioAllocator
+
+portfolio = Portfolio(initial_cash=100_000)
+allocator = PortfolioAllocator()
+tickers = ["NVDA", "BTC-USD", "AAPL"]
+
+for date in trading_dates:
+    # 1. 获取当前持仓上下文
+    portfolio_context = portfolio.get_summary()
+
+    # 2. 逐 ticker 独立调用图（图内部逻辑不变）
+    decisions = {}
+    for ticker in tickers:
+        decision, _ = ta.propagate(ticker, date)  # 原有接口，不改动
+        decisions[ticker] = decision
+
+    # 3. 组合分配层：汇总单资产决策 + 持仓上下文 → 组合交易计划
+    trade_plan = allocator.aggregate(decisions, portfolio_context)
+
+    # 4. 获取当日价格
+    prices = {t: get_price(t, date) for t in tickers}
+
+    # 5. 执行组合交易计划
+    portfolio.execute_signals(trade_plan, date, prices)
+
+    # 6. 更新价格 + 记录快照
+    portfolio.update_prices(prices, date)
+
+    # 7. 反思
+    ta.reflect_and_remember(portfolio.get_returns())
+
+# 绩效评估
+metrics = portfolio.get_performance_metrics()
+portfolio.export_history("eval_results/portfolio_backtest/")
+```
+
+#### 6.9 与现有回测设计的兼容
+
+现有 `回测逻辑设计.md` 的**两阶段解耦思路**保留：
+
+- **阶段1**（昂贵）：逐 ticker 批量生成单资产决策，保存为 JSON（每个决策日包含各 ticker 的独立决策 + 组合分配层产出的组合交易计划）
+- **阶段2**（廉价）：读取组合交易计划 + 行情，模拟多资产交易，计算组合绩效
+
+区别在于：
+- 阶段1 每个决策日先逐 ticker 跑图（图不变），再由 `PortfolioAllocator` 聚合为组合交易计划
+- 阶段2 的 Simulator 从单资产模拟升级为多资产 Portfolio 模拟
+- 绩效指标增加组合层面维度（资产权重变化、跨资产相关性等）
+
+#### 6.10 实现优先级
+
+> **注意**：全部在 `feature/multi-asset-portfolio` 分支上开发，图内部代码不做任何改动。
+
+| 步骤 | 内容 | 依赖 |
 |------|------|------|
-| **Bug** | Portfolio Manager 读错字段 | 读 `investment_plan`（Research Manager 输出）而非 `trader_investment_plan`（Trader 输出），prompt 中标注为 "Trader's proposed plan" 但实际来源是 Research Manager |
-| **Bug** | 工具绑定与 ToolNode 不一致 | News 分析师 LLM 只绑定 `get_news` 和 `get_global_news`，但 ToolNode（[trading_graph.py:175-181](tradingagents/graph/trading_graph.py#L175-L181)）额外包含 `get_insider_transactions`，LLM 永远不会调用，是死代码。[fundamentals_analyst.py:10](tradingagents/agents/analysts/fundamentals_analyst.py#L10) 也导入了该函数但未使用 |
-| **不对称** | 风险辩手无记忆 | Bull/Bear 研究员有独立记忆池并注入 `past_memory_str`，但 Aggressive/Conservative/Neutral 没有记忆参数，无法从历史决策中学习 |
-| **不对称** | Ticker/日期注入不完整 | `build_instrument_context()` 和 `trade_date` 仅覆盖部分 agent，Bull/Bear 和风险三方辩手无直接 ticker 身份和日期感知 |
-| **不对称** | Trader 调用方式独特 | 唯一用 message list（role 分离）调 LLM 的非分析师 agent，唯一显式处理空记忆的 agent |
-| **冗余** | Trader 无效写入 | 写 `messages` + `sender`，无下游消费者，历史遗留可清理 |
-| **冗余** | Research Manager 覆写 `current_response` | 裁判决策覆盖了辩论发言字段，破坏语义一致性（辩论已结束，不影响运行） |
-| **潜在问题** | 辩论中每轮重复注入全量报告 | 每次辩论 agent 被调用都把四份完整报告重新拼入 prompt，无压缩或摘要，辩论轮数增多时 token 消耗显著上升 |
-| **潜在问题** | 分析师无工具调用轮次限制 | 完全依赖 LLM 自主停止，仅靠 `recursion_limit=100` 兜底，非优雅截止 |
+| ① | `portfolio/models.py` — Position, Trade, Snapshot 数据结构定义 | 无 |
+| ② | `portfolio/portfolio.py` — 核心持仓管理 + 信号执行 | ① |
+| ③ | `portfolio/signal_mapper.py` — 单资产决策到仓位比例的映射规则 | ② |
+| ④ | `portfolio/allocator.py` — PortfolioAllocator 组合分配层 | ①③ |
+| ⑤ | 回测循环升级：外层多 ticker 循环 + 组合分配 + Portfolio 模拟 | ②④ |
+| ⑥ | 绩效评估升级：组合层面指标 | ⑤ |
 
----
-
-#### E. 策略汇总
-
-| 阶段 | 上下文方式 | 控制机制 |
-|------|-----------|----------|
-| 分析师节点内部 | messages 累积 tool call/result | LLM 自主停止 + `recursion_limit=100` 兜底 |
-| 分析师节点之间 | `RemoveMessage` 清空 | 按 `selected_analysts` 串行，按需裁剪 |
-| 辩论阶段 | 双层：`history`（全量）+ `current_*`（最新轮） | `count` 计数器 + 条件路由截止 |
-| Trader / Manager | 绕过 messages，手动构建 prompt | 精确选取具名字段，不受 messages 长度影响 |
-| 长期记忆 | BM25 检索 top-2 注入 prompt | 仅传 recommendation，不传原始情境；仅存内存 |
-| LLM 分层 | deep 给裁判，quick 给执行层 | 蒸馏后高推理（"推理三明治"） |
-| 防污染 | `normalize_content()` 过滤 reasoning token | 所有 LLM 响应统一处理 |
-| Ticker / 日期 | `build_instrument_context()` + `trade_date` 注入 | 仅覆盖部分 agent（见 D 节不对称） |
-
-
+先做 ①②③④（全部是图外部新模块，不动现有代码），再做 ⑤⑥（回测集成）。
 
 
 # TradeHive - 开发者文档

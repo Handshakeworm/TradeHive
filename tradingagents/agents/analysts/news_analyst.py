@@ -4,6 +4,7 @@ import json
 from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     get_global_news,
+    get_insider_transactions,
     get_news,
 )
 from tradingagents.dataflows.config import get_config
@@ -17,6 +18,7 @@ def create_news_analyst(llm):
         tools = [
             get_news,
             get_global_news,
+            get_insider_transactions,
         ]
 
         system_message = (

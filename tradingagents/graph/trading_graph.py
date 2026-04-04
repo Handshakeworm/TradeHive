@@ -38,8 +38,6 @@ from tradingagents.agents.utils.agent_utils import (
     get_macro_indicator,
     get_macro_snapshot,
     list_available_macro_series,
-    get_news_sentiment,
-    get_reddit_sentiment,
 )
 
 from .conditional_logic import ConditionalLogic
@@ -54,7 +52,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "sentiment", "news", "fundamentals"],
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
@@ -175,9 +173,9 @@ class TradingAgentsGraph:
                     get_indicators,
                 ]
             ),
-            "social": ToolNode(
+            "sentiment": ToolNode(
                 [
-                    # News tools for social media analysis
+                    # News tools for sentiment analysis
                     get_news,
                 ]
             ),
@@ -199,13 +197,6 @@ class TradingAgentsGraph:
                 ]
             ),
             # ── 新增数据源 ToolNode ─────────────────────────────────────
-            "sentiment": ToolNode(
-                [
-                    get_news,
-                    get_news_sentiment,
-                    get_reddit_sentiment,
-                ]
-            ),
             "crypto": ToolNode(
                 [
                     get_crypto_price,
