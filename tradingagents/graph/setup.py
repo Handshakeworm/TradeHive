@@ -18,7 +18,7 @@ class GraphSetup:
         self,
         quick_thinking_llm: ChatOpenAI,
         deep_thinking_llm: ChatOpenAI,
-        tool_nodes: Dict[str, ToolNode],
+        tool_nodes: Dict[str, Any],
         bull_memory,
         bear_memory,
         trader_memory,
@@ -54,51 +54,45 @@ class GraphSetup:
 
         # Create analyst nodes
         analyst_nodes = {}
-        delete_nodes = {}
         tool_nodes = {}
 
         if "market" in selected_analysts:
             analyst_nodes["market"] = create_market_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
         if "sentiment" in selected_analysts:
             analyst_nodes["sentiment"] = create_sentiment_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["sentiment"] = create_msg_delete()
             tool_nodes["sentiment"] = self.tool_nodes["sentiment"]
 
         if "news" in selected_analysts:
             analyst_nodes["news"] = create_news_analyst(
-                self.quick_thinking_llm
+                self.deep_thinking_llm
             )
-            delete_nodes["news"] = create_msg_delete()
             tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         if "macro" in selected_analysts:
             analyst_nodes["macro"] = create_macro_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["macro"] = create_msg_delete()
             tool_nodes["macro"] = self.tool_nodes["macro"]
 
 
-        # Create researcher and manager nodes
+        # Create researcher nodes (now using deep thinking for structured evaluation)
         bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
+            self.deep_thinking_llm, self.bull_memory
         )
         bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
+            self.deep_thinking_llm, self.bear_memory
         )
         research_manager_node = create_research_manager(
             self.deep_thinking_llm, self.invest_judge_memory
@@ -117,12 +111,16 @@ class GraphSetup:
         workflow = StateGraph(AgentState)
 
         # Add analyst nodes to the graph
+        # Per-analyst "Done" nodes are no-ops (branch endpoints for fan-in);
+        # a single shared "Analyst Aggregator" does the actual message cleanup.
+        _noop = lambda state: {}
         for analyst_type, node in analyst_nodes.items():
             workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
-            workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
-            )
+            workflow.add_node(f"Msg Clear {analyst_type.capitalize()}", _noop)
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+
+        # Shared aggregator: clears all analyst messages before Bull Researcher
+        workflow.add_node("Analyst Aggregator", create_msg_delete())
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -134,18 +132,18 @@ class GraphSetup:
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
-        # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
-
-        # Connect analysts in sequence
-        for i, analyst_type in enumerate(selected_analysts):
+        # Define edges — analysts run in parallel (fan-out / fan-in)
+        clear_nodes = []
+        for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            clear_nodes.append(current_clear)
 
-            # Add conditional edges for current analyst
+            # Fan-out: START → each analyst in parallel
+            workflow.add_edge(START, current_analyst)
+
+            # Tool loop (analyst ↔ tools)
             workflow.add_conditional_edges(
                 current_analyst,
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
@@ -153,30 +151,14 @@ class GraphSetup:
             )
             workflow.add_edge(current_tools, current_analyst)
 
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+        # Fan-in: wait for ALL analyst branches before triggering Aggregator
+        workflow.add_edge(clear_nodes, "Analyst Aggregator")
 
-        # Add remaining edges
-        workflow.add_conditional_edges(
-            "Bull Researcher",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bear Researcher",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bull Researcher": "Bull Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
+        # Bull/Bear run in parallel, fan-in to Research Manager (barrier)
+        workflow.add_edge("Analyst Aggregator", "Bull Researcher")
+        workflow.add_edge("Analyst Aggregator", "Bear Researcher")
+        workflow.add_edge(["Bull Researcher", "Bear Researcher"], "Research Manager")
+
         workflow.add_edge("Research Manager", "Trader")
         workflow.add_edge("Trader", "Aggressive Analyst")
         workflow.add_conditional_edges(

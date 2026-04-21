@@ -8,3 +8,4 @@ class AnalystType(str, Enum):
     SENTIMENT = "sentiment"
     NEWS = "news"
     FUNDAMENTALS = "fundamentals"
+    MACRO = "macro"

@@ -55,6 +55,7 @@ class MessageBuffer:
         "sentiment": "Sentiment Analyst",
         "news": "News Analyst",
         "fundamentals": "Fundamentals Analyst",
+        "macro": "Macro Analyst",
     }
 
     # Report section mapping: section -> (analyst_key for filtering, finalizing_agent)
@@ -65,6 +66,7 @@ class MessageBuffer:
         "sentiment_report": ("sentiment", "Sentiment Analyst"),
         "news_report": ("news", "News Analyst"),
         "fundamentals_report": ("fundamentals", "Fundamentals Analyst"),
+        "macro_report": ("macro", "Macro Analyst"),
         "investment_plan": (None, "Research Manager"),
         "trader_investment_plan": (None, "Trader"),
         "final_trade_decision": (None, "Portfolio Manager"),
@@ -784,18 +786,20 @@ def update_research_team_status(status):
 
 
 # Ordered list of analysts for status transitions
-ANALYST_ORDER = ["market", "sentiment", "news", "fundamentals"]
+ANALYST_ORDER = ["market", "sentiment", "news", "fundamentals", "macro"]
 ANALYST_AGENT_NAMES = {
     "market": "Market Analyst",
     "sentiment": "Sentiment Analyst",
     "news": "News Analyst",
     "fundamentals": "Fundamentals Analyst",
+    "macro": "Macro Analyst",
 }
 ANALYST_REPORT_MAP = {
     "market": "market_report",
     "sentiment": "sentiment_report",
     "news": "news_report",
     "fundamentals": "fundamentals_report",
+    "macro": "macro_report",
 }
 
 
@@ -921,7 +925,6 @@ def run_analysis():
 
     # Create config with selected research depth
     config = DEFAULT_CONFIG.copy()
-    config["max_debate_rounds"] = selections["research_depth"]
     config["max_risk_discuss_rounds"] = selections["research_depth"]
     config["quick_think_llm"] = selections["shallow_thinker"]
     config["deep_think_llm"] = selections["deep_thinker"]

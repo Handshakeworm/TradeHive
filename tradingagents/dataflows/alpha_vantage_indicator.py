@@ -28,6 +28,8 @@ def get_indicator(
     from dateutil.relativedelta import relativedelta
 
     supported_indicators = {
+        "close_20_sma": ("20 SMA", "close"),
+        "close_30_sma": ("30 SMA", "close"),
         "close_50_sma": ("50 SMA", "close"),
         "close_200_sma": ("200 SMA", "close"),
         "close_10_ema": ("10 EMA", "close"),
@@ -43,6 +45,8 @@ def get_indicator(
     }
 
     indicator_descriptions = {
+        "close_20_sma": "20 SMA: A short-term trend indicator and the basis for Bollinger Bands. Usage: Track near-term trend direction; price crossing above/below the 20 SMA often signals short-term momentum shifts. Tips: More responsive than 50 SMA but still filters daily noise.",
+        "close_30_sma": "30 SMA: A short-to-medium-term trend indicator. Usage: Bridge the gap between the fast 20 SMA and the slower 50 SMA; useful for confirming short-term trend changes. Tips: Acts as dynamic support/resistance in trending markets.",
         "close_50_sma": "50 SMA: A medium-term trend indicator. Usage: Identify trend direction and serve as dynamic support/resistance. Tips: It lags price; combine with faster indicators for timely signals.",
         "close_200_sma": "200 SMA: A long-term trend benchmark. Usage: Confirm overall market trend and identify golden/death cross setups. Tips: It reacts slowly; best for strategic trend confirmation rather than frequent trading entries.",
         "close_10_ema": "10 EMA: A responsive short-term average. Usage: Capture quick shifts in momentum and potential entry points. Tips: Prone to noise in choppy markets; use alongside longer averages for filtering false signals.",
@@ -74,7 +78,23 @@ def get_indicator(
 
     try:
         # Get indicator data for the period
-        if indicator == "close_50_sma":
+        if indicator == "close_20_sma":
+            data = _make_api_request("SMA", {
+                "symbol": symbol,
+                "interval": interval,
+                "time_period": "20",
+                "series_type": series_type,
+                "datatype": "csv"
+            })
+        elif indicator == "close_30_sma":
+            data = _make_api_request("SMA", {
+                "symbol": symbol,
+                "interval": interval,
+                "time_period": "30",
+                "series_type": series_type,
+                "datatype": "csv"
+            })
+        elif indicator == "close_50_sma":
             data = _make_api_request("SMA", {
                 "symbol": symbol,
                 "interval": interval,
@@ -166,6 +186,7 @@ def get_indicator(
             "macd": "MACD", "macds": "MACD_Signal", "macdh": "MACD_Hist",
             "boll": "Real Middle Band", "boll_ub": "Real Upper Band", "boll_lb": "Real Lower Band",
             "rsi": "RSI", "atr": "ATR", "close_10_ema": "EMA",
+            "close_20_sma": "SMA", "close_30_sma": "SMA",
             "close_50_sma": "SMA", "close_200_sma": "SMA"
         }
 

@@ -36,3 +36,29 @@ def get_stock(
     response = _make_api_request("TIME_SERIES_DAILY", params)
 
     return _filter_csv_by_date_range(response, start_date, end_date)
+
+
+def get_weekly_stock(
+    symbol: str,
+    start_date: str,
+    end_date: str
+) -> str:
+    """
+    Returns raw weekly OHLCV values filtered to the specified date range.
+
+    Args:
+        symbol: The name of the equity. For example: symbol=IBM
+        start_date: Start date in yyyy-mm-dd format
+        end_date: End date in yyyy-mm-dd format
+
+    Returns:
+        CSV string containing the weekly time series data filtered to the date range.
+    """
+    params = {
+        "symbol": symbol,
+        "datatype": "csv",
+    }
+
+    response = _make_api_request("TIME_SERIES_WEEKLY", params)
+
+    return _filter_csv_by_date_range(response, start_date, end_date)

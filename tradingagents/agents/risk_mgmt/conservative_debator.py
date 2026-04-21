@@ -1,5 +1,7 @@
 import json
 
+from tradingagents.agents.risk_mgmt.aggressive_debator import _bull_bear_scores_summary
+
 
 def create_conservative_debator(llm):
     def conservative_node(state) -> dict:
@@ -10,11 +12,6 @@ def create_conservative_debator(llm):
         current_aggressive_response = risk_debate_state.get("current_aggressive_response", "")
         current_neutral_response = risk_debate_state.get("current_neutral_response", "")
 
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-
         # Parse Trader's quantitative plan
         trader_plan_raw = state["trader_investment_plan"]
         try:
@@ -22,30 +19,50 @@ def create_conservative_debator(llm):
         except (json.JSONDecodeError, TypeError):
             trader_plan = {}
 
+        # Parse RM's market regime
+        rm_plan_raw = state.get("investment_plan", "{}")
+        try:
+            rm_plan = json.loads(rm_plan_raw)
+        except (json.JSONDecodeError, TypeError):
+            rm_plan = {}
+        market_regime = rm_plan.get("market_regime", "consolidation")
+
+        # Bull/Bear structured evaluations
+        bull = json.loads(state.get("bull_structured_output", "{}"))
+        bear = json.loads(state.get("bear_structured_output", "{}"))
+
+        position_pct = state.get("current_position_pct", 0)
+        avg_cost = state.get("avg_cost", 0)
+        unrealized_pnl = state.get("unrealized_pnl_pct", 0)
+        current_price = state.get("current_price", 0)
+
         count = risk_debate_state.get("count", 0)
 
         if count == 0:
-            data_context = f"""Draw from the following data sources to build a convincing case for a low-risk approach:
-
-Market Research Report: {market_research_report}
-Social Media Sentiment Report: {sentiment_report}
-Latest World Affairs Report: {news_report}
-Company Fundamentals Report: {fundamentals_report}"""
+            data_context = f"""Bull/Bear evaluation summary:
+{_bull_bear_scores_summary(bull, bear)}"""
         else:
             data_context = "Draw from the debate history to build a convincing case for a low-risk approach."
 
         prompt = f"""As the Conservative Risk Analyst, your primary objective is to protect capital and minimize downside risk. You are reviewing the Trader's specific plan and debating whether the parameters expose the firm to excessive risk.
 
+The Research Manager identified the current market regime as: **{market_regime}**
+Current position is {position_pct:.1f}% (avg cost: ${avg_cost:.2f}, unrealized PnL: {unrealized_pnl:.1f}%). Current price: ${current_price:.2f}
+
+**Evaluate these dimensions:**
+1. Does Trader's position size match the current market regime?
+2. Is the proposed change from the current position ({position_pct:.1f}%) reasonable, or is it too aggressive a swing?
+3. If holding a large position, is the uptrend still intact — or are there reversal signals being ignored?
+
+**Execution rule:** Trades are executed at next trading day's market open at market price. target_position_pct is the total position size after that execution, as a percentage of total capital (0% = no position, 100% = all capital invested).
+
 **Trader's Proposed Plan:**
 - Action: {trader_plan.get('action', 'N/A')}
 - Target position: {trader_plan.get('target_position_pct', 'N/A')}% of capital
-- Take-profit: {trader_plan.get('take_profit_price', 'N/A')}
-- Stop-loss: {trader_plan.get('stop_loss_price', 'N/A')}
 
 **Your stance — argue for safer parameters:**
 - Position size should be SMALLER (e.g. if Trader says 40%, argue for 20% or less)
-- Take-profit should be LOWER (secure gains earlier, don't get greedy)
-- Stop-loss should be TIGHTER (limit maximum loss per trade)
+- In uncertain conditions, capital preservation is paramount
 
 Respond directly to the aggressive and neutral analysts' specific arguments. Point out where their optimism ignores concrete risks.
 

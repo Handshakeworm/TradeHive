@@ -219,6 +219,13 @@ __marimo__/
 **/data_cache/
 **/fmp_cache/
 
+# Test / backtest results (local only, do not sync)
+backtest_results/
+eval_results/
+
+# Claude Code local settings
+.claude/
+
 # Personal notes
 新待移交八股.md
 

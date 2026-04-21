@@ -21,8 +21,7 @@ config["llm_provider"] = "openrouter"
 config["backend_url"] = "https://openrouter.ai/api/v1"
 config["deep_think_llm"] = "deepseek/deepseek-v3.2"
 config["quick_think_llm"] = "xiaomi/mimo-v2-flash"
-config["max_debate_rounds"] = 2
-config["max_risk_discuss_rounds"] = 2
+config["max_risk_discuss_rounds"] = 1
 
 # Configure data vendors
 config["data_vendors"] = {
@@ -41,7 +40,7 @@ ta = TradingAgentsGraph(
 
 # ── 回测模式 ─────────────────────────────────────────────────────────────────
 engine = BacktestEngine(ta, initial_capital=100_000)
-results = engine.run("NVDA", "2025-02-14", "2025-08-14")
+results = engine.run("NVDA", "2025-02-20", "2025-08-20")
 
 print(f"\nBacktest complete: {results['ticker']}")
 print(f"  Period: {results['start_date']} ~ {results['end_date']}")

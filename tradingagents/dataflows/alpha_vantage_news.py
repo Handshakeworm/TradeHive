@@ -16,10 +16,15 @@ def get_news(ticker, start_date, end_date, limit: int = 30, sort: str = "RELEVAN
         Dictionary containing news sentiment data or JSON string.
     """
 
+    # time_to must cover the full day, otherwise same-day news is excluded
+    time_to = format_datetime_for_api(end_date)
+    if time_to.endswith("T0000"):
+        time_to = time_to[:-5] + "T2359"
+
     params = {
         "tickers": ticker,
         "time_from": format_datetime_for_api(start_date),
-        "time_to": format_datetime_for_api(end_date),
+        "time_to": time_to,
         "limit": str(limit),
         "sort": sort,
     }
@@ -47,10 +52,15 @@ def get_global_news(curr_date, look_back_days: int = 7, limit: int = 50, sort: s
     start_dt = curr_dt - timedelta(days=look_back_days)
     start_date = start_dt.strftime("%Y-%m-%d")
 
+    # time_to must cover the full day
+    time_to = format_datetime_for_api(curr_date)
+    if time_to.endswith("T0000"):
+        time_to = time_to[:-5] + "T2359"
+
     params = {
         "topics": "financial_markets,economy_macro,economy_monetary",
         "time_from": format_datetime_for_api(start_date),
-        "time_to": format_datetime_for_api(curr_date),
+        "time_to": time_to,
         "limit": str(limit),
         "sort": sort,
     }

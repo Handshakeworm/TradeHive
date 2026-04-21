@@ -77,6 +77,10 @@ class BacktestEngine:
 
         position = PositionTracker(initial_capital=self.initial_capital)
         pending_decision: Optional[Dict] = None
+        last_successful_decision: Optional[Dict] = None
+        last_regime: str = "consolidation"  # regime state machine continuity
+        last_entry_reasoning: str = ""     # residual: entry thesis for current regime
+        last_daily_deltas: str = ""        # residual: accumulated daily deltas
         daily_log: List[Dict[str, Any]] = []
 
         for i, day_str in enumerate(trading_days):
@@ -101,8 +105,6 @@ class BacktestEngine:
                 order_result = position.execute_order(
                     target_position_pct=pending_decision.get("target_position_pct", 0),
                     price=open_price,
-                    stop_loss=pending_decision.get("stop_loss_price"),
-                    take_profit=pending_decision.get("take_profit_price"),
                     action=pending_decision.get("action", "Hold"),
                 )
                 day_record["order"] = order_result
@@ -113,21 +115,19 @@ class BacktestEngine:
                 )
 
             # ----------------------------------------------------------
-            # 2. Intraday: check stop-loss / take-profit
-            # ----------------------------------------------------------
-            trigger = position.check_stop_take(high_price, low_price)
-            if trigger is not None:
-                day_record["trigger"] = trigger
-                logger.info(
-                    "Day %s: %s triggered @ %.2f, PnL=%.2f",
-                    day_str, trigger["reason"], trigger["price"],
-                    trigger["realized_pnl"],
-                )
-
-            # ----------------------------------------------------------
-            # 3. Close: update position, run pipeline
+            # 2. Close: update position, run pipeline
             # ----------------------------------------------------------
             pos_state = position.get_state_dict(close_price)
+            # Inject previous day's PM reasoning for continuity
+            if last_successful_decision:
+                reasoning = last_successful_decision.get("reasoning", "")
+                pos_state["prev_reasoning"] = reasoning[:500]
+            else:
+                pos_state["prev_reasoning"] = ""
+            pos_state["current_price"] = close_price
+            pos_state["prev_regime"] = last_regime
+            pos_state["regime_entry_reasoning"] = last_entry_reasoning
+            pos_state["regime_daily_deltas"] = last_daily_deltas
             day_record["position"] = pos_state.copy()
             day_record["total_value"] = position.get_total_value(close_price)
 
@@ -146,6 +146,33 @@ class BacktestEngine:
                     pending_decision = {"action": decision_str, "target_position_pct": 0}
 
                 day_record["decision"] = pending_decision
+                last_successful_decision = pending_decision
+
+                # Extract regime + reasoning for residual connection
+                try:
+                    rm_plan = json.loads(final_state.get("investment_plan", "{}"))
+                    new_regime = rm_plan.get("market_regime", last_regime)
+                    new_reasoning = rm_plan.get("entry_thesis", "")
+                    new_delta = rm_plan.get("daily_delta", "")
+
+                    if new_regime == last_regime:
+                        # Same regime: keep entry thesis, append delta
+                        if not last_entry_reasoning:
+                            last_entry_reasoning = new_reasoning
+                        if new_delta:
+                            entry = f"\n[Day {day_str} | {new_regime}] {new_delta}"
+                            last_daily_deltas += entry
+                    else:
+                        # Regime changed: reset with transition note
+                        old_summary = last_entry_reasoning[:300]
+                        if len(last_entry_reasoning) > 300:
+                            old_summary += "..."
+                        last_daily_deltas = f"[Transition from {last_regime}] {old_summary}"
+                        last_entry_reasoning = new_reasoning
+
+                    last_regime = new_regime
+                except (json.JSONDecodeError, TypeError):
+                    pass  # keep previous state
                 logger.info(
                     "Day %s close: PM decision=%s, target_pct=%.1f%%",
                     day_str,
@@ -154,7 +181,7 @@ class BacktestEngine:
                 )
 
             except Exception as e:
-                logger.error("Day %s: pipeline failed: %s", day_str, e)
+                logger.error("Day %s: pipeline failed: %s", day_str, e, exc_info=True)
                 day_record["error"] = str(e)
                 pending_decision = None
 
@@ -176,6 +203,7 @@ class BacktestEngine:
             "initial_capital": self.initial_capital,
             "final_value": final_value,
             "total_return_pct": total_return_pct,
+            "total_fees": round(position.total_fees, 4),
             "trading_days": len(trading_days),
             "daily_log": daily_log,
         }

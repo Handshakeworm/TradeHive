@@ -1,4 +1,22 @@
+import json as _json
 from datetime import datetime, timedelta
+
+# ── 新闻字段精简 ─────────────────────────────────────────────────────────────
+
+_NEWS_KEEP_FIELDS = ("title", "time_published", "summary",
+                     "overall_sentiment_score", "overall_sentiment_label")
+
+
+def _slim_news_json(raw_json: str) -> str:
+    """Strip non-essential fields from news JSON to reduce LLM input size."""
+    data = _json.loads(raw_json)
+    feed = data.get("feed", [])
+    data["feed"] = [
+        {k: a[k] for k in _NEWS_KEEP_FIELDS if k in a}
+        for a in feed
+    ]
+    return _json.dumps(data, ensure_ascii=False)
+
 
 # Import from vendor-specific modules
 from .y_finance import (
@@ -8,6 +26,7 @@ from .y_finance import (
 )
 from .alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
+    get_weekly_stock as get_alpha_vantage_weekly_stock,
     get_indicator as get_alpha_vantage_indicator,
     get_balance_sheet as get_alpha_vantage_balance_sheet,
     get_cashflow as get_alpha_vantage_cashflow,
@@ -32,7 +51,8 @@ TOOLS_CATEGORIES = {
     "core_stock_apis": {
         "description": "OHLCV stock price data",
         "tools": [
-            "get_stock_data"
+            "get_stock_data",
+            "get_weekly_stock_data",
         ]
     },
     "technical_indicators": {
@@ -72,6 +92,9 @@ VENDOR_METHODS = {
         "alpha_vantage": get_alpha_vantage_stock,
         "yfinance": get_YFin_data_online,
     },
+    "get_weekly_stock_data": {
+        "alpha_vantage": get_alpha_vantage_weekly_stock,
+    },
     # technical_indicators
     "get_indicators": {
         "alpha_vantage": get_alpha_vantage_indicator,
@@ -107,7 +130,7 @@ VENDOR_METHODS = {
 
 # 使用批量缓存的方法（首次拉取 5 年，后续本地切片）
 BULK_CACHE_METHODS = {
-    "get_stock_data", "get_indicators",
+    "get_stock_data", "get_weekly_stock_data", "get_indicators",
     "get_balance_sheet", "get_cashflow", "get_income_statement",
     "get_fundamentals",
     "get_insider_transactions",
@@ -262,11 +285,31 @@ def _segmented_news_fetch(label: str, start_date: str, end_date: str,
     return _json.dumps(result, ensure_ascii=False)
 
 
+def _add_change_pct(csv_data: str) -> str:
+    """在 stock data CSV 中追加 change_pct 列（基于 close 的日涨跌幅%）。"""
+    import pandas as pd
+    from io import StringIO
+    try:
+        df = pd.read_csv(StringIO(csv_data))
+        if "close" in df.columns and not df.empty:
+            date_col = df.columns[0]
+            df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+            df = df.sort_values(date_col)  # 升序算 pct_change
+            df["change_pct"] = df["close"].pct_change().mul(100).round(2)
+            df = df.sort_values(date_col, ascending=False)  # 恢复降序
+            return df.to_csv(index=False)
+    except Exception:
+        pass
+    return csv_data
+
+
 def _try_bulk_cache(method: str, args: tuple, kwargs: dict, config: dict):
     """尝试从批量缓存获取数据。成功返回结果字符串，失败返回 None。"""
     try:
         if method == "get_stock_data":
             return _bulk_stock_data(args, kwargs, config)
+        elif method == "get_weekly_stock_data":
+            return _bulk_weekly_stock_data(args, kwargs, config)
         elif method == "get_indicators":
             return _bulk_indicators(args, kwargs, config)
         elif method == "get_balance_sheet":
@@ -302,6 +345,8 @@ def _bulk_stock_data(args, kwargs, config):
         if "timestamp" not in csv_data.split("\n", 1)[0]:
             print(f"[bulk_cache] stock_data {ticker}: AV 返回异常，不缓存")
             return None
+        # 计算涨跌幅并存入缓存
+        csv_data = _add_change_pct(csv_data)
         bulk_save(ticker, data_type, csv_data, {"start_date": pf_start, "end_date": pf_end})
 
     full_csv = bulk_load(ticker, data_type)
@@ -311,6 +356,34 @@ def _bulk_stock_data(args, kwargs, config):
     row_count = max(sliced.strip().count("\n"), 0)  # 减去列头行
     header = (
         f"# Stock data for {ticker.upper()} from {start_date} to {end_date}\n"
+        f"# Total records: {row_count}\n"
+        f"# Data from bulk cache\n\n"
+    )
+    return header + sliced
+
+
+def _bulk_weekly_stock_data(args, kwargs, config):
+    """get_weekly_stock_data(symbol, start_date, end_date)"""
+    ticker = args[0]
+    start_date, end_date = args[1], args[2]
+    data_type = "stock_data_weekly"
+
+    if not bulk_has(ticker, data_type):
+        pf_start, pf_end = _prefetch_range(config)
+        raw = _call_vendor_with_fallback("get_weekly_stock_data", ticker, pf_start, pf_end)
+        csv_data = strip_comment_header(raw)
+        if "timestamp" not in csv_data.split("\n", 1)[0]:
+            print(f"[bulk_cache] stock_data_weekly {ticker}: AV 返回异常，不缓存")
+            return None
+        csv_data = _add_change_pct(csv_data)
+        bulk_save(ticker, data_type, csv_data, {"start_date": pf_start, "end_date": pf_end})
+
+    full_csv = bulk_load(ticker, data_type)
+    sliced = slice_csv_by_range(full_csv, start_date, end_date)
+
+    row_count = max(sliced.strip().count("\n"), 0)
+    header = (
+        f"# Weekly stock data for {ticker.upper()} from {start_date} to {end_date}\n"
         f"# Total records: {row_count}\n"
         f"# Data from bulk cache\n\n"
     )
@@ -345,6 +418,8 @@ def _bulk_indicators(args, kwargs, config):
     # av_func / av_params: AV API 函数名和参数
     # col_name: 从 CSV 中提取的列名
     _INDICATOR_MAP = {
+        "close_20_sma":  {"group": "sma_20",  "av_func": "SMA",   "av_params": {"time_period": "20",  "series_type": "close"}, "col": "SMA"},
+        "close_30_sma":  {"group": "sma_30",  "av_func": "SMA",   "av_params": {"time_period": "30",  "series_type": "close"}, "col": "SMA"},
         "close_50_sma":  {"group": "sma_50",  "av_func": "SMA",   "av_params": {"time_period": "50",  "series_type": "close"}, "col": "SMA"},
         "close_200_sma": {"group": "sma_200", "av_func": "SMA",   "av_params": {"time_period": "200", "series_type": "close"}, "col": "SMA"},
         "close_10_ema":  {"group": "ema_10",  "av_func": "EMA",   "av_params": {"time_period": "10",  "series_type": "close"}, "col": "EMA"},
@@ -359,6 +434,8 @@ def _bulk_indicators(args, kwargs, config):
     }
 
     _INDICATOR_DESCRIPTIONS = {
+        "close_20_sma": "20 SMA: A short-term trend indicator and the basis for Bollinger Bands. Usage: Track near-term trend direction; price crossing above/below the 20 SMA often signals short-term momentum shifts. Tips: More responsive than 50 SMA but still filters daily noise.",
+        "close_30_sma": "30 SMA: A short-to-medium-term trend indicator. Usage: Bridge the gap between the fast 20 SMA and the slower 50 SMA; useful for confirming short-term trend changes. Tips: Acts as dynamic support/resistance in trending markets.",
         "close_50_sma": "50 SMA: A medium-term trend indicator. Usage: Identify trend direction and serve as dynamic support/resistance. Tips: It lags price; combine with faster indicators for timely signals.",
         "close_200_sma": "200 SMA: A long-term trend benchmark. Usage: Confirm overall market trend and identify golden/death cross setups. Tips: It reacts slowly; best for strategic trend confirmation rather than frequent trading entries.",
         "close_10_ema": "10 EMA: A responsive short-term average. Usage: Capture quick shifts in momentum and potential entry points. Tips: Prone to noise in choppy markets; use alongside longer averages for filtering false signals.",
@@ -605,14 +682,13 @@ def _bulk_news(args, kwargs, config):
     sliced = slice_json_news(full_json, start_date, end_date, limit=100)
 
     try:
-        import json
-        data = json.loads(sliced)
+        data = _json.loads(sliced)
         if len(data.get("feed", [])) == 0:
             return None
-    except (json.JSONDecodeError, TypeError):
+    except (_json.JSONDecodeError, TypeError):
         pass
 
-    return sliced
+    return _slim_news_json(sliced)
 
 
 def _bulk_global_news(args, kwargs, config):
@@ -655,14 +731,13 @@ def _bulk_global_news(args, kwargs, config):
     sliced = slice_json_news(full_json, start_dt.strftime("%Y-%m-%d"), curr_date, limit=int(limit))
 
     try:
-        import json
-        data = json.loads(sliced)
+        data = _json.loads(sliced)
         if len(data.get("feed", [])) == 0:
             return None
-    except (json.JSONDecodeError, TypeError):
+    except (_json.JSONDecodeError, TypeError):
         pass
 
-    return sliced
+    return _slim_news_json(sliced)
 
 
 # ── 主路由 ──────────────────────────────────────────────────────────────────

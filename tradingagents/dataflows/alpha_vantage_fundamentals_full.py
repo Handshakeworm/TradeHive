@@ -466,7 +466,6 @@ def _format_report(m: dict, ticker: str) -> str:
     lines.append(f"52-Week High: {_fmt(m.get('52WeekHigh'), 'per_share')}")
     lines.append(f"52-Week Low: {_fmt(m.get('52WeekLow'), 'per_share')}")
     lines.append(f"50-Day Moving Average: {_fmt(m.get('50DMA'), 'per_share')}")
-    lines.append(f"200-Day Moving Average: {_fmt(m.get('200DMA'), 'per_share')}")
     lines.append("")
 
     # Earnings

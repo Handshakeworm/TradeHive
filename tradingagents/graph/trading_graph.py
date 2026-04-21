@@ -23,6 +23,7 @@ from tradingagents.dataflows.config import set_config
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
     get_stock_data,
+    get_weekly_stock_data,
     get_indicators,
     get_fundamentals,
     get_balance_sheet,
@@ -115,7 +116,6 @@ class TradingAgentsGraph:
 
         # Initialize components
         self.conditional_logic = ConditionalLogic(
-            max_debate_rounds=self.config["max_debate_rounds"],
             max_risk_discuss_rounds=self.config["max_risk_discuss_rounds"],
         )
         self.graph_setup = GraphSetup(
@@ -164,53 +164,38 @@ class TradingAgentsGraph:
 
         return kwargs
 
-    def _create_tool_nodes(self) -> Dict[str, ToolNode]:
-        """Create tool nodes for different data sources using abstract methods."""
+    @staticmethod
+    def _scoped_tool_node(tools, messages_key: str):
+        """Wrap a ToolNode so it reads/writes a per-analyst messages field."""
+        tool_node = ToolNode(tools)
+        def scoped(state):
+            result = tool_node.invoke({"messages": state[messages_key]})
+            return {messages_key: result["messages"]}
+        return scoped
+
+    def _create_tool_nodes(self) -> Dict[str, Any]:
+        """Create scoped tool nodes that read/write per-analyst message fields."""
         return {
-            "market": ToolNode(
-                [
-                    # Core stock data tools
-                    get_stock_data,
-                    # Technical indicators
-                    get_indicators,
-                ]
+            "market": self._scoped_tool_node(
+                [get_stock_data, get_weekly_stock_data, get_indicators],
+                "market_messages",
             ),
-            "sentiment": ToolNode(
-                [
-                    # News tools for sentiment analysis
-                    get_news,
-                    get_sentiment_summary,
-                    get_vix,
-                ]
+            "sentiment": self._scoped_tool_node(
+                [get_sentiment_summary, get_vix],
+                "sentiment_messages",
             ),
-            "news": ToolNode(
-                [
-                    # News and insider information
-                    get_news,
-                    get_global_news,
-                    get_insider_transactions,
-                ]
+            "news": self._scoped_tool_node(
+                [get_news, get_global_news, get_insider_transactions],
+                "news_messages",
             ),
-            "fundamentals": ToolNode(
-                [
-                    # Fundamental analysis tools
-                    get_fundamentals,
-                    get_balance_sheet,
-                    get_cashflow,
-                    get_income_statement,
-                ]
+            "fundamentals": self._scoped_tool_node(
+                [get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement],
+                "fundamentals_messages",
             ),
-            "macro": ToolNode(
-                [
-                    # Macroeconomic indicator tools
-                    get_federal_funds_rate,
-                    get_cpi,
-                    get_real_gdp,
-                    get_unemployment,
-                    get_treasury_yield,
-                    get_dxy,
-                    get_vix,
-                ]
+            "macro": self._scoped_tool_node(
+                [get_federal_funds_rate, get_cpi, get_real_gdp, get_unemployment,
+                 get_treasury_yield, get_dxy, get_vix],
+                "macro_messages",
             ),
         }
 
@@ -232,21 +217,28 @@ class TradingAgentsGraph:
         )
         args = self.propagator.get_graph_args()
 
+        _MSG_KEYS = ("messages", "market_messages", "sentiment_messages",
+                     "news_messages", "fundamentals_messages", "macro_messages")
+
         if self.debug:
-            # Debug mode with tracing
+            # Debug mode with tracing — track seen message IDs to avoid
+            # reprinting the same message on every state snapshot.
             trace = []
+            _seen_msg_ids = set()
             for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    try:
-                        chunk["messages"][-1].pretty_print()
-                    except UnicodeEncodeError:
-                        # Windows GBK 终端无法显示 emoji 等特殊字符，去掉非 ASCII 字符后输出
-                        content = str(chunk["messages"][-1].content)
-                        safe = content.encode("ascii", errors="ignore").decode("ascii")
-                        print(safe)
-                    trace.append(chunk)
+                for key in _MSG_KEYS:
+                    for msg in chunk.get(key, []):
+                        mid = getattr(msg, "id", id(msg))
+                        if mid in _seen_msg_ids:
+                            continue
+                        _seen_msg_ids.add(mid)
+                        try:
+                            msg.pretty_print()
+                        except UnicodeEncodeError:
+                            content = str(msg.content)
+                            safe = content.encode("ascii", errors="ignore").decode("ascii")
+                            print(safe)
+                trace.append(chunk)
 
             final_state = trace[-1]
         else:
@@ -271,17 +263,9 @@ class TradingAgentsGraph:
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
             "fundamentals_report": final_state["fundamentals_report"],
-            "investment_debate_state": {
-                "bull_history": final_state["investment_debate_state"]["bull_history"],
-                "bear_history": final_state["investment_debate_state"]["bear_history"],
-                "history": final_state["investment_debate_state"]["history"],
-                "current_response": final_state["investment_debate_state"][
-                    "current_response"
-                ],
-                "judge_decision": final_state["investment_debate_state"][
-                    "judge_decision"
-                ],
-            },
+            "macro_report": final_state["macro_report"],
+            "bull_structured_output": final_state["bull_structured_output"],
+            "bear_structured_output": final_state["bear_structured_output"],
             "trader_investment_decision": final_state["trader_investment_plan"],
             "risk_debate_state": {
                 "aggressive_history": final_state["risk_debate_state"]["aggressive_history"],

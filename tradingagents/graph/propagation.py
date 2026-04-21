@@ -20,10 +20,13 @@ class Propagator:
         "current_position_pct": 0.0,
         "avg_cost": 0.0,
         "total_capital": 0.0,
-        "current_stop_loss": None,
-        "current_take_profit": None,
         "last_action": "Hold",
         "unrealized_pnl_pct": 0.0,
+        "prev_reasoning": "",
+        "current_price": 0.0,
+        "prev_regime": "consolidation",
+        "regime_entry_reasoning": "",
+        "regime_daily_deltas": "",
     }
 
     def create_initial_state(
@@ -71,11 +74,19 @@ class Propagator:
                     "count": 0,
                 }
             ),
+            "bull_structured_output": "",
+            "bear_structured_output": "",
             "market_report": "",
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
             "macro_report": "",
+            # per-analyst scoped messages
+            "market_messages": [("human", company_name)],
+            "sentiment_messages": [("human", company_name)],
+            "news_messages": [("human", company_name)],
+            "fundamentals_messages": [("human", company_name)],
+            "macro_messages": [("human", company_name)],
             # position tracking
             **pos,
         }

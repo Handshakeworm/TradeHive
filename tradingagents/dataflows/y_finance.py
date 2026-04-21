@@ -57,6 +57,16 @@ def get_stock_stats_indicators_window(
 
     best_ind_params = {
         # Moving Averages
+        "close_20_sma": (
+            "20 SMA: A short-term trend indicator and the basis for Bollinger Bands. "
+            "Usage: Track near-term trend direction; price crossing above/below the 20 SMA often signals short-term momentum shifts. "
+            "Tips: More responsive than 50 SMA but still filters daily noise."
+        ),
+        "close_30_sma": (
+            "30 SMA: A short-to-medium-term trend indicator. "
+            "Usage: Bridge the gap between the fast 20 SMA and the slower 50 SMA; useful for confirming short-term trend changes. "
+            "Tips: Acts as dynamic support/resistance in trending markets."
+        ),
         "close_50_sma": (
             "50 SMA: A medium-term trend indicator. "
             "Usage: Identify trend direction and serve as dynamic support/resistance. "

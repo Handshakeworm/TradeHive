@@ -24,21 +24,30 @@ def create_fundamentals_analyst(llm):
         ]
 
         system_message = (
-            "You are a researcher tasked with analyzing fundamental information over the past week about a company. Please write a comprehensive report of the company's fundamental information such as financial documents, company profile, basic company financials, and company financial history to gain a full view of the company's fundamental information to inform traders. Make sure to include as much detail as possible. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + " Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."
-            + " Use the available tools: `get_fundamentals` for comprehensive company analysis, `get_balance_sheet`, `get_cashflow`, and `get_income_statement` for specific financial statements.",
+            "You are a fundamental analyst tasked with assessing a company's financial health and valuation. "
+            "Your workflow: "
+            "1) Call get_fundamentals(ticker, curr_date) for key ratios — P/E, P/B, P/S, ROE, margins, EPS, etc. "
+            "2) Call get_balance_sheet(ticker, curr_date) to assess debt structure, cash position, and equity trends. "
+            "3) Call get_cashflow(ticker, curr_date) to evaluate operating cash flow, free cash flow, and capex. "
+            "4) Call get_income_statement(ticker, curr_date) to analyze revenue growth, margin trends, and earnings quality. "
+            "Your report MUST cover these dimensions: "
+            "(a) Profitability: margins, ROE, earnings growth trajectory. "
+            "(b) Financial health: debt-to-equity, current ratio, cash reserves. "
+            "(c) Growth: revenue and earnings growth rates, YoY trends across multiple years. "
+            "(d) Valuation: P/E, P/B, P/S — is the stock cheap or expensive relative to its historical range and growth? "
+            "(e) Cash flow quality: FCF generation, capex intensity, dividend/buyback sustainability. "
+            "Append a Markdown summary table at the end."
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
+                    "You are an analyst assistant. Your ONLY job is to produce a factual research report."
+                    " Do NOT make any trading recommendations, buy/sell/hold proposals, or suggest entry/exit prices, stop-losses, or take-profit levels."
+                    " Use the provided tools to gather data and write your report."
                     " If you are unable to fully answer, that's OK; another assistant with different tools"
                     " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
                     " You have access to the following tools: {tool_names}.\n{system_message}"
                     "For your reference, the current date is {current_date}. {instrument_context}",
                 ),
@@ -53,7 +62,7 @@ def create_fundamentals_analyst(llm):
 
         chain = prompt | llm.bind_tools(tools)
 
-        result = chain.invoke(state["messages"])
+        result = chain.invoke(state["fundamentals_messages"])
 
         report = ""
 
@@ -61,7 +70,7 @@ def create_fundamentals_analyst(llm):
             report = result.content
 
         return {
-            "messages": [result],
+            "fundamentals_messages": [result],
             "fundamentals_report": report,
         }
 

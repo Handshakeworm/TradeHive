@@ -35,7 +35,6 @@ def build_dataframe(results: dict) -> pd.DataFrame:
                     day["order"]["shares_traded"] if "order" in day else 0
                 ),
                 "trade_cost": abs(day["order"]["cost"]) if "order" in day else 0,
-                "triggered": day.get("trigger", {}).get("reason"),
             }
         )
     df = pd.DataFrame(rows).set_index("date")
@@ -147,13 +146,6 @@ def plot_results(df: pd.DataFrame, metrics: dict, ticker: str, save_path: str):
     ax3.set_title("Position Allocation")
     ax3.set_ylim(0, 105)
     ax3.grid(True, alpha=0.3)
-
-    # Mark triggers
-    triggers = df[df["triggered"].notna()]
-    for _, row in triggers.iterrows():
-        color = "#F44336" if row["triggered"] == "stop_loss" else "#4CAF50"
-        marker = "v" if row["triggered"] == "stop_loss" else "^"
-        ax3.scatter(row.name, row["position_pct"], color=color, marker=marker, s=80, zorder=5)
 
     # --- Panel 4: Daily Trades ---
     ax4 = axes[3]

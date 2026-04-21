@@ -1,8 +1,9 @@
-from langchain_core.messages import HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 
 # Import tools from separate utility files
 from tradingagents.agents.utils.core_stock_tools import (
-    get_stock_data
+    get_stock_data,
+    get_weekly_stock_data,
 )
 from tradingagents.agents.utils.technical_indicators_tools import (
     get_indicators
@@ -19,6 +20,7 @@ from tradingagents.agents.utils.news_data_tools import (
     get_global_news
 )
 
+
 def build_instrument_context(ticker: str) -> str:
     """Describe the exact instrument so agents preserve exchange-qualified tickers."""
     return (
@@ -29,7 +31,7 @@ def build_instrument_context(ticker: str) -> str:
 
 def create_msg_delete():
     def delete_messages(state):
-        """Clear messages and add placeholder for Anthropic compatibility"""
+        """Clear messages and add placeholder for Anthropic compatibility."""
         messages = state["messages"]
 
         # Remove all messages

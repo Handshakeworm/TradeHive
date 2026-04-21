@@ -6,62 +6,45 @@ from tradingagents.agents.utils.agent_states import AgentState
 class ConditionalLogic:
     """Handles conditional logic for determining graph flow."""
 
-    def __init__(self, max_debate_rounds=1, max_risk_discuss_rounds=1):
+    def __init__(self, max_risk_discuss_rounds=1):
         """Initialize with configuration parameters."""
-        self.max_debate_rounds = max_debate_rounds
         self.max_risk_discuss_rounds = max_risk_discuss_rounds
 
-    def should_continue_market(self, state: AgentState):
-        """Determine if market analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
+    @staticmethod
+    def _has_pending_tool_calls_for(state: AgentState, messages_key: str) -> bool:
+        """Check if the last message in a per-analyst channel has pending tool calls."""
+        last_message = state[messages_key][-1]
         if last_message.tool_calls:
+            return True
+        if getattr(last_message, "invalid_tool_calls", None):
+            return True
+        return False
+
+    def should_continue_market(self, state: AgentState):
+        if self._has_pending_tool_calls_for(state, "market_messages"):
             return "tools_market"
         return "Msg Clear Market"
 
     def should_continue_sentiment(self, state: AgentState):
-        """Determine if sentiment analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
+        if self._has_pending_tool_calls_for(state, "sentiment_messages"):
             return "tools_sentiment"
         return "Msg Clear Sentiment"
 
     def should_continue_news(self, state: AgentState):
-        """Determine if news analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
+        if self._has_pending_tool_calls_for(state, "news_messages"):
             return "tools_news"
         return "Msg Clear News"
 
     def should_continue_fundamentals(self, state: AgentState):
-        """Determine if fundamentals analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
+        if self._has_pending_tool_calls_for(state, "fundamentals_messages"):
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
 
     def should_continue_macro(self, state: AgentState):
-        """Determine if macro analysis should continue."""
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
+        if self._has_pending_tool_calls_for(state, "macro_messages"):
             return "tools_macro"
         return "Msg Clear Macro"
 
-
-    def should_continue_debate(self, state: AgentState) -> str:
-        """Determine if debate should continue."""
-
-        if (
-            state["investment_debate_state"]["count"] >= 2 * self.max_debate_rounds
-        ):  # 3 rounds of back-and-forth between 2 agents
-            return "Research Manager"
-        if state["investment_debate_state"]["current_response"].startswith("Bull"):
-            return "Bear Researcher"
-        return "Bull Researcher"
 
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
